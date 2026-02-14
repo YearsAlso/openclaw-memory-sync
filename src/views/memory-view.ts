@@ -1,4 +1,4 @@
-import { App, ItemView, WorkspaceLeaf, TFile, MarkdownRenderer } from 'obsidian';
+import { App, ItemView, WorkspaceLeaf, TFile, TFolder, Notice } from 'obsidian';
 import { OpenClawAPIClient, MemoryFile } from '../api-client';
 
 export const MEMORY_VIEW_TYPE = 'openclaw-memory-view';
@@ -8,9 +8,10 @@ export class MemoryView extends ItemView {
 	private files: MemoryFile[] = [];
 	private filteredFiles: MemoryFile[] = [];
 	private searchQuery: string = '';
-	private currentPage: number = 1;
-	private pageSize: number = 20;
+	private sortBy: 'name' | 'size' | 'modified' | 'created' = 'modified';
+	private sortOrder: 'asc' | 'desc' = 'desc';
 	private isLoading: boolean = false;
+	private lastRefresh: Date | null = null;
 
 	constructor(app: App, apiClient: OpenClawAPIClient) {
 		super(app);
@@ -35,241 +36,225 @@ export class MemoryView extends ItemView {
 
 		// 创建主容器
 		const mainContainer = container.createDiv({ cls: 'openclaw-memory-view' });
-		
+
 		// 创建标题栏
 		const header = mainContainer.createDiv({ cls: 'openclaw-memory-header' });
-		header.createEl('h2', { text: '📚 OpenClaw记忆库' });
-		
+		header.createEl('h2', { text: 'OpenClaw记忆库' });
+
 		// 创建控制栏
-		const controls = header.createDiv({ cls: 'openclaw-memory-controls' });
-		
+		const controls = mainContainer.createDiv({ cls: 'openclaw-memory-controls' });
+
 		// 搜索框
-		const searchContainer = controls.createDiv({ cls: 'openclaw-search-container' });
+		const searchContainer = controls.createDiv({ cls: 'search-container' });
 		const searchInput = searchContainer.createEl('input', {
 			type: 'text',
-			placeholder: '搜索记忆...',
-			cls: 'openclaw-search-input'
+			placeholder: '搜索记忆文件...',
+			cls: 'search-input'
 		});
-		
 		searchInput.addEventListener('input', (e) => {
 			this.searchQuery = (e.target as HTMLInputElement).value;
-			this.filterFiles();
+			this.filterAndSortFiles();
 			this.renderFileList();
 		});
+
+		// 排序选项
+		const sortContainer = controls.createDiv({ cls: 'sort-container' });
 		
+		const sortBySelect = sortContainer.createEl('select', { cls: 'sort-select' });
+		sortBySelect.createEl('option', { value: 'name', text: '按名称' });
+		sortBySelect.createEl('option', { value: 'size', text: '按大小' });
+		sortBySelect.createEl('option', { value: 'modified', text: '按修改时间' });
+		sortBySelect.createEl('option', { value: 'created', text: '按创建时间' });
+		sortBySelect.value = this.sortBy;
+		sortBySelect.addEventListener('change', (e) => {
+			this.sortBy = (e.target as HTMLSelectElement).value as any;
+			this.filterAndSortFiles();
+			this.renderFileList();
+		});
+
+		const sortOrderButton = sortContainer.createEl('button', {
+			text: this.sortOrder === 'desc' ? '↓' : '↑',
+			cls: 'sort-order-button'
+		});
+		sortOrderButton.addEventListener('click', () => {
+			this.sortOrder = this.sortOrder === 'desc' ? 'asc' : 'desc';
+			sortOrderButton.setText(this.sortOrder === 'desc' ? '↓' : '↑');
+			this.filterAndSortFiles();
+			this.renderFileList();
+		});
+
 		// 刷新按钮
 		const refreshButton = controls.createEl('button', {
-			text: '🔄 刷新',
-			cls: 'openclaw-refresh-button'
+			text: '刷新',
+			cls: 'refresh-button'
 		});
-		
 		refreshButton.addEventListener('click', () => {
-			this.loadFiles();
+			this.refreshFiles();
 		});
-		
-		// 创建内容区域
-		const content = mainContainer.createDiv({ cls: 'openclaw-memory-content' });
-		
-		// 文件列表容器
-		this.fileListContainer = content.createDiv({ cls: 'openclaw-file-list-container' });
-		
+
+		// 创建文件列表容器
+		const fileListContainer = mainContainer.createDiv({ cls: 'file-list-container' });
+		this.contentEl = fileListContainer;
+
+		// 创建状态栏
+		const statusBar = mainContainer.createDiv({ cls: 'status-bar' });
+		this.statusEl = statusBar;
+
 		// 加载文件
-		await this.loadFiles();
+		await this.refreshFiles();
 	}
 
 	async onClose(): Promise<void> {
 		// 清理资源
 	}
 
-	private async loadFiles(): Promise<void> {
+	async refreshFiles(): Promise<void> {
 		this.isLoading = true;
-		this.renderLoading();
-		
+		this.updateStatus('正在加载文件...');
+
 		try {
 			this.files = await this.apiClient.getFiles();
-			this.filterFiles();
+			this.lastRefresh = new Date();
+			this.filterAndSortFiles();
 			this.renderFileList();
+			this.updateStatus(`已加载 ${this.files.length} 个文件`);
 		} catch (error) {
-			this.renderError(error.message);
+			this.updateStatus(`加载失败: ${error.message}`, 'error');
+			console.error('加载文件失败:', error);
 		} finally {
 			this.isLoading = false;
 		}
 	}
 
-	private filterFiles(): void {
-		if (!this.searchQuery.trim()) {
+	private filterAndSortFiles(): void {
+		// 过滤文件
+		if (this.searchQuery.trim()) {
+			const query = this.searchQuery.toLowerCase();
+			this.filteredFiles = this.files.filter(file => 
+				file.name.toLowerCase().includes(query) ||
+				file.path.toLowerCase().includes(query)
+			);
+		} else {
 			this.filteredFiles = [...this.files];
-			return;
 		}
-		
-		const query = this.searchQuery.toLowerCase();
-		this.filteredFiles = this.files.filter(file => 
-			file.name.toLowerCase().includes(query) ||
-			file.path.toLowerCase().includes(query) ||
-			file.preview.toLowerCase().includes(query)
-		);
-	}
 
-	private renderLoading(): void {
-		this.fileListContainer.empty();
-		this.fileListContainer.createEl('div', {
-			text: '正在加载记忆文件...',
-			cls: 'openclaw-loading'
-		});
-	}
+		// 排序文件
+		this.filteredFiles.sort((a, b) => {
+			let comparison = 0;
+			
+			switch (this.sortBy) {
+				case 'name':
+					comparison = a.name.localeCompare(b.name);
+					break;
+				case 'size':
+					comparison = a.size - b.size;
+					break;
+				case 'modified':
+					comparison = a.modified.getTime() - b.modified.getTime();
+					break;
+				case 'created':
+					comparison = a.created.getTime() - b.created.getTime();
+					break;
+			}
 
-	private renderError(message: string): void {
-		this.fileListContainer.empty();
-		this.fileListContainer.createEl('div', {
-			text: `加载失败: ${message}`,
-			cls: 'openclaw-error'
+			return this.sortOrder === 'desc' ? -comparison : comparison;
 		});
 	}
 
 	private renderFileList(): void {
-		this.fileListContainer.empty();
-		
+		this.contentEl.empty();
+
 		if (this.filteredFiles.length === 0) {
-			if (this.searchQuery) {
-				this.fileListContainer.createEl('div', {
-					text: `没有找到包含"${this.searchQuery}"的记忆文件`,
-					cls: 'openclaw-empty'
+			if (this.searchQuery.trim()) {
+				this.contentEl.createEl('p', {
+					text: `没有找到包含 "${this.searchQuery}" 的文件`,
+					cls: 'no-results'
 				});
 			} else {
-				this.fileListContainer.createEl('div', {
-					text: '记忆库为空',
-					cls: 'openclaw-empty'
+				this.contentEl.createEl('p', {
+					text: '没有找到文件',
+					cls: 'no-results'
 				});
 			}
 			return;
 		}
-		
-		// 统计信息
-		const stats = this.fileListContainer.createDiv({ cls: 'openclaw-stats' });
-		stats.createEl('span', {
-			text: `共 ${this.filteredFiles.length} 个文件`
-		});
-		
-		const totalSize = this.filteredFiles.reduce((sum, file) => sum + file.size, 0);
-		stats.createEl('span', {
-			text: `总大小: ${this.formatSize(totalSize)}`
-		});
-		
-		// 文件列表
-		const fileList = this.fileListContainer.createDiv({ cls: 'openclaw-file-list' });
-		
-		this.filteredFiles.forEach(file => {
-			const fileItem = fileList.createDiv({ cls: 'openclaw-file-item' });
+
+		// 创建文件列表
+		const fileList = this.contentEl.createEl('div', { cls: 'file-list' });
+
+		for (const file of this.filteredFiles) {
+			const fileItem = fileList.createEl('div', { cls: 'file-item' });
 			
 			// 文件图标和名称
-			const header = fileItem.createDiv({ cls: 'openclaw-file-header' });
-			header.createEl('span', {
+			const fileHeader = fileItem.createEl('div', { cls: 'file-header' });
+			fileHeader.createEl('span', { 
 				text: '📄',
-				cls: 'openclaw-file-icon'
+				cls: 'file-icon'
 			});
 			
-			const fileName = header.createEl('span', {
+			const fileName = fileHeader.createEl('span', {
 				text: file.name,
-				cls: 'openclaw-file-name'
+				cls: 'file-name'
 			});
-			
 			fileName.addEventListener('click', () => {
 				this.openFile(file);
 			});
-			
+
 			// 文件信息
-			const info = fileItem.createDiv({ cls: 'openclaw-file-info' });
+			const fileInfo = fileItem.createEl('div', { cls: 'file-info' });
 			
-			info.createEl('span', {
-				text: `大小: ${this.formatSize(file.size)}`,
-				cls: 'openclaw-file-size'
-			});
-			
-			info.createEl('span', {
-				text: `行数: ${file.lines}`,
-				cls: 'openclaw-file-lines'
-			});
-			
-			info.createEl('span', {
-				text: `修改: ${this.formatDate(file.modified)}`,
-				cls: 'openclaw-file-modified'
-			});
-			
-			// 文件路径
-			const path = fileItem.createDiv({ cls: 'openclaw-file-path' });
-			path.createEl('span', {
+			// 路径
+			fileInfo.createEl('span', {
 				text: file.path,
-				cls: 'openclaw-file-path-text'
+				cls: 'file-path'
 			});
-			
-			// 预览
-			if (file.preview) {
-				const preview = fileItem.createDiv({ cls: 'openclaw-file-preview' });
-				preview.createEl('span', {
-					text: file.preview.substring(0, 100) + (file.preview.length > 100 ? '...' : ''),
-					cls: 'openclaw-file-preview-text'
-				});
-			}
-			
+
+			// 大小
+			fileInfo.createEl('span', {
+				text: this.formatFileSize(file.size),
+				cls: 'file-size'
+			});
+
+			// 行数
+			fileInfo.createEl('span', {
+				text: `${file.lines} 行`,
+				cls: 'file-lines'
+			});
+
+			// 修改时间
+			fileInfo.createEl('span', {
+				text: this.formatDate(file.modified),
+				cls: 'file-modified'
+			});
+
 			// 操作按钮
-			const actions = fileItem.createDiv({ cls: 'openclaw-file-actions' });
+			const actions = fileItem.createEl('div', { cls: 'file-actions' });
 			
-			const openButton = actions.createEl('button', {
-				text: '打开',
-				cls: 'openclaw-action-button'
+			// 预览按钮
+			const previewButton = actions.createEl('button', {
+				text: '预览',
+				cls: 'preview-button'
 			});
-			
-			openButton.addEventListener('click', () => {
-				this.openFile(file);
+			previewButton.addEventListener('click', () => {
+				this.previewFile(file);
 			});
-			
+
+			// 下载按钮
+			const downloadButton = actions.createEl('button', {
+				text: '下载',
+				cls: 'download-button'
+			});
+			downloadButton.addEventListener('click', () => {
+				this.downloadFile(file);
+			});
+
+			// 删除按钮
 			const deleteButton = actions.createEl('button', {
 				text: '删除',
-				cls: 'openclaw-action-button openclaw-action-delete'
+				cls: 'delete-button'
 			});
-			
 			deleteButton.addEventListener('click', () => {
 				this.deleteFile(file);
-			});
-		});
-		
-		// 分页控件
-		if (this.filteredFiles.length > this.pageSize) {
-			this.renderPagination();
-		}
-	}
-
-	private renderPagination(): void {
-		const totalPages = Math.ceil(this.filteredFiles.length / this.pageSize);
-		
-		const pagination = this.fileListContainer.createDiv({ cls: 'openclaw-pagination' });
-		
-		if (this.currentPage > 1) {
-			const prevButton = pagination.createEl('button', {
-				text: '上一页',
-				cls: 'openclaw-page-button'
-			});
-			
-			prevButton.addEventListener('click', () => {
-				this.currentPage--;
-				this.renderFileList();
-			});
-		}
-		
-		pagination.createEl('span', {
-			text: `第 ${this.currentPage} 页 / 共 ${totalPages} 页`,
-			cls: 'openclaw-page-info'
-		});
-		
-		if (this.currentPage < totalPages) {
-			const nextButton = pagination.createEl('button', {
-				text: '下一页',
-				cls: 'openclaw-page-button'
-			});
-			
-			nextButton.addEventListener('click', () => {
-				this.currentPage++;
-				this.renderFileList();
 			});
 		}
 	}
@@ -278,39 +263,82 @@ export class MemoryView extends ItemView {
 		try {
 			const fileContent = await this.apiClient.getFile(file.name);
 			
-			// 创建临时文件在Obsidian中打开
-			const tempFileName = `OpenClaw/${file.name}`;
-			const tempFile = this.app.vault.getAbstractFileByPath(tempFileName);
-			
-			if (tempFile instanceof TFile) {
-				await this.app.vault.modify(tempFile, fileContent.content);
-			} else {
-				await this.app.vault.create(tempFileName, fileContent.content);
-			}
-			
-			// 打开文件
-			const leaf = this.app.workspace.getLeaf();
-			await leaf.openFile(this.app.vault.getAbstractFileByPath(tempFileName) as TFile);
-			
+			// 在Obsidian中创建新标签页打开
+			const leaf = this.app.workspace.getLeaf(true);
+			await leaf.openFile(
+				await this.app.vault.create(`${file.name}`, fileContent.content)
+			);
 		} catch (error) {
+			new Notice(`打开文件失败: ${error.message}`);
 			console.error('打开文件失败:', error);
 		}
 	}
 
-	private async deleteFile(file: MemoryFile): Promise<void> {
-		const confirmed = await confirm(`确定要删除文件 "${file.name}" 吗？`);
-		
-		if (confirmed) {
-			try {
-				await this.apiClient.deleteFile(file.name);
-				await this.loadFiles(); // 重新加载文件列表
-			} catch (error) {
-				console.error('删除文件失败:', error);
-			}
+	private async previewFile(file: MemoryFile): Promise<void> {
+		try {
+			const fileContent = await this.apiClient.getFile(file.name);
+			
+			// 创建预览模态框
+			const modal = new PreviewModal(this.app, file.name, fileContent.content);
+			modal.open();
+		} catch (error) {
+			new Notice(`预览文件失败: ${error.message}`);
+			console.error('预览文件失败:', error);
 		}
 	}
 
-	private formatSize(bytes: number): string {
+	private async downloadFile(file: MemoryFile): Promise<void> {
+		try {
+			const fileContent = await this.apiClient.getFile(file.name);
+			
+			// 创建下载链接
+			const blob = new Blob([fileContent.content], { type: 'text/plain' });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = file.name;
+			document.body.appendChild(a);
+			a.click();
+			document.body.removeChild(a);
+			URL.revokeObjectURL(url);
+			
+			new Notice(`已下载: ${file.name}`);
+		} catch (error) {
+			new Notice(`下载文件失败: ${error.message}`);
+			console.error('下载文件失败:', error);
+		}
+	}
+
+	private async deleteFile(file: MemoryFile): Promise<void> {
+		const confirmed = await confirm(`确定要删除 "${file.name}" 吗？`);
+		if (!confirmed) return;
+
+		try {
+			await this.apiClient.deleteFile(file.name);
+			new Notice(`已删除: ${file.name}`);
+			await this.refreshFiles();
+		} catch (error) {
+			new Notice(`删除文件失败: ${error.message}`);
+			console.error('删除文件失败:', error);
+		}
+	}
+
+	private updateStatus(message: string, type: 'info' | 'error' = 'info'): void {
+		this.statusEl.empty();
+		const statusText = this.statusEl.createEl('span', {
+			text: message,
+			cls: `status-text status-${type}`
+		});
+
+		if (this.lastRefresh) {
+			this.statusEl.createEl('span', {
+				text: ` | 最后更新: ${this.formatDate(this.lastRefresh)}`,
+				cls: 'last-refresh'
+			});
+		}
+	}
+
+	private formatFileSize(bytes: number): string {
 		if (bytes === 0) return '0 B';
 		
 		const k = 1024;
@@ -326,28 +354,69 @@ export class MemoryView extends ItemView {
 		const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 		
 		if (diffDays === 0) {
-			return '今天';
+			// 今天
+			return date.toLocaleTimeString();
 		} else if (diffDays === 1) {
-			return '昨天';
+			// 昨天
+			return '昨天 ' + date.toLocaleTimeString();
 		} else if (diffDays < 7) {
+			// 一周内
 			return `${diffDays}天前`;
 		} else {
+			// 更早
 			return date.toLocaleDateString();
 		}
 	}
 
-	// 公开方法
 	open(): void {
-		const leaf = this.app.workspace.getLeaf(false);
+		const leaf = this.app.workspace.getLeaf(true);
 		leaf.setViewState({
 			type: MEMORY_VIEW_TYPE,
 			active: true
 		});
 	}
+}
 
-	refresh(): void {
-		this.loadFiles();
+class PreviewModal {
+	private modal: any;
+
+	constructor(app: App, title: string, content: string) {
+		// 使用Obsidian的Modal类
+		this.modal = new (class extends (app as any).Modal {
+			constructor(app: App, private title: string, private content: string) {
+				super(app);
+			}
+
+			onOpen() {
+				const { contentEl } = this;
+				contentEl.createEl('h2', { text: this.title });
+				
+				const previewArea = contentEl.createEl('div', {
+					cls: 'preview-area'
+				});
+				
+				const textarea = previewArea.createEl('textarea', {
+					value: this.content,
+					cls: 'preview-textarea'
+				});
+				textarea.readOnly = true;
+				textarea.style.width = '100%';
+				textarea.style.height = '400px';
+				textarea.style.fontFamily = 'monospace';
+			}
+
+			onClose() {
+				const { contentEl } = this;
+				contentEl.empty();
+			}
+		})(app, title, content);
 	}
 
-	private fileListContainer: HTMLElement;
+	open(): void {
+		this.modal.open();
+	}
+
+	close(): void {
+		this.modal.close();
+	}
 }

@@ -2,11 +2,11 @@
   "id": "openclaw-memory-sync",
   "name": "OpenClaw Memory Sync",
   "version": "1.0.0",
-  "minAppVersion": "1.0.0",
-  "description": "实时双向同步OpenClaw记忆库到Obsidian",
-  "author": "OpenClaw Assistant",
-  "authorUrl": "https://openclaw.ai",
+  "minAppVersion": "0.15.0",
+  "description": "Real-time bidirectional sync between OpenClaw memory and Obsidian notes",
+  "author": "YearsAlso",
+  "authorUrl": "https://github.com/YearsAlso",
+  "fundingUrl": "https://github.com/sponsors/YearsAlso",
   "isDesktopOnly": false,
-  "fundingUrl": "https://github.com/sponsors/openclaw",
   "css": "styles.css"
 }

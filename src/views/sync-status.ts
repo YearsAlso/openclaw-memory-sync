@@ -1,17 +1,25 @@
-import { App, ItemView, WorkspaceLeaf } from 'obsidian';
-import { SyncEngine, SyncStatus, SyncState } from '../sync-engine';
+import { App, ItemView, WorkspaceLeaf, Notice } from 'obsidian';
+import { SyncEngine, SyncStatus, SyncState, SyncError } from '../sync-engine';
 
 export const SYNC_STATUS_VIEW_TYPE = 'openclaw-sync-status-view';
 
 export class SyncStatusView extends ItemView {
 	private syncEngine: SyncEngine;
 	private status: SyncStatus;
-	private updateInterval: number;
+	private isAutoRefresh: boolean = true;
+	private refreshIntervalId: number = 0;
+	private errorDetailsVisible: Map<number, boolean> = new Map();
 
 	constructor(app: App, syncEngine: SyncEngine) {
 		super(app);
 		this.syncEngine = syncEngine;
 		this.status = syncEngine.getStatus();
+
+		// 监听状态变化
+		this.syncEngine.onStatusChange((newStatus: SyncStatus) => {
+			this.status = newStatus;
+			this.render();
+		});
 	}
 
 	getViewType(): string {
@@ -32,310 +40,350 @@ export class SyncStatusView extends ItemView {
 
 		// 创建主容器
 		const mainContainer = container.createDiv({ cls: 'openclaw-sync-status-view' });
-		
+
 		// 创建标题栏
-		const header = mainContainer.createDiv({ cls: 'openclaw-sync-header' });
-		header.createEl('h2', { text: '🔄 OpenClaw同步状态' });
-		
-		// 创建内容区域
-		this.contentContainer = mainContainer.createDiv({ cls: 'openclaw-sync-content' });
-		
-		// 监听状态变化
-		this.syncEngine.onStatusChange((status: SyncStatus) => {
-			this.status = status;
-			this.renderContent();
+		const header = mainContainer.createDiv({ cls: 'sync-status-header' });
+		header.createEl('h2', { text: 'OpenClaw同步状态' });
+
+		// 创建控制栏
+		const controls = mainContainer.createDiv({ cls: 'sync-controls' });
+
+		// 立即同步按钮
+		const syncNowButton = controls.createEl('button', {
+			text: '立即同步',
+			cls: 'sync-now-button'
 		});
-		
+		syncNowButton.addEventListener('click', () => {
+			this.syncEngine.sync().catch(error => {
+				new Notice(`同步失败: ${error.message}`);
+			});
+		});
+
+		// 暂停/恢复按钮
+		const pauseResumeButton = controls.createEl('button', {
+			text: this.syncEngine.isPausedState() ? '恢复同步' : '暂停同步',
+			cls: 'pause-resume-button'
+		});
+		pauseResumeButton.addEventListener('click', () => {
+			if (this.syncEngine.isPausedState()) {
+				this.syncEngine.resume();
+				pauseResumeButton.setText('暂停同步');
+				new Notice('同步已恢复');
+			} else {
+				this.syncEngine.pause();
+				pauseResumeButton.setText('恢复同步');
+				new Notice('同步已暂停');
+			}
+		});
+
+		// 自动刷新开关
+		const autoRefreshContainer = controls.createDiv({ cls: 'auto-refresh-container' });
+		const autoRefreshCheckbox = autoRefreshContainer.createEl('input', {
+			type: 'checkbox',
+			id: 'auto-refresh',
+			cls: 'auto-refresh-checkbox'
+		});
+		autoRefreshCheckbox.checked = this.isAutoRefresh;
+		autoRefreshCheckbox.addEventListener('change', (e) => {
+			this.isAutoRefresh = (e.target as HTMLInputElement).checked;
+			if (this.isAutoRefresh) {
+				this.startAutoRefresh();
+			} else {
+				this.stopAutoRefresh();
+			}
+		});
+		autoRefreshContainer.createEl('label', {
+			text: '自动刷新',
+			attr: { for: 'auto-refresh' }
+		});
+
+		// 手动刷新按钮
+		const refreshButton = controls.createEl('button', {
+			text: '刷新',
+			cls: 'refresh-button'
+		});
+		refreshButton.addEventListener('click', () => {
+			this.render();
+		});
+
+		// 创建状态内容容器
+		this.contentEl = mainContainer.createDiv({ cls: 'sync-status-content' });
+
+		// 开始自动刷新
+		if (this.isAutoRefresh) {
+			this.startAutoRefresh();
+		}
+
 		// 初始渲染
-		this.renderContent();
-		
-		// 启动定时更新
-		this.updateInterval = window.setInterval(() => {
-			this.renderContent();
-		}, 1000);
+		this.render();
 	}
 
 	async onClose(): Promise<void> {
-		// 清理定时器
-		if (this.updateInterval) {
-			clearInterval(this.updateInterval);
-		}
-		
-		// 移除状态监听
-		// 注意：syncEngine目前没有提供offStatusChange方法
-		// 在实际实现中需要添加
+		this.stopAutoRefresh();
 	}
 
-	private renderContent(): void {
-		this.contentContainer.empty();
-		
+	private render(): void {
+		this.contentEl.empty();
+
 		// 状态卡片
-		const statusCard = this.contentContainer.createDiv({ cls: 'openclaw-status-card' });
+		const statusCard = this.contentEl.createDiv({ cls: 'status-card' });
 		
-		// 状态指示器
-		const statusIndicator = statusCard.createDiv({ cls: 'openclaw-status-indicator' });
+		// 状态图标和文本
+		const statusHeader = statusCard.createDiv({ cls: 'status-header' });
 		
-		const statusIcon = statusIndicator.createEl('span', {
-			cls: 'openclaw-status-icon'
+		const statusIcon = statusHeader.createEl('span', { 
+			text: this.getStatusIcon(),
+			cls: 'status-icon'
 		});
 		
-		const statusText = statusIndicator.createEl('span', {
-			cls: 'openclaw-status-text'
+		const statusText = statusHeader.createEl('span', {
+			text: this.getStatusText(),
+			cls: `status-text status-${this.status.state}`
 		});
-		
-		// 根据状态设置图标和文本
-		switch (this.status.state) {
-			case SyncState.IDLE:
-				statusIcon.setText('✅');
-				statusText.setText('空闲');
-				statusIndicator.addClass('openclaw-status-idle');
-				break;
-				
-			case SyncState.SYNCING:
-				statusIcon.setText('🔄');
-				statusText.setText('同步中');
-				statusIndicator.addClass('openclaw-status-syncing');
-				break;
-				
-			case SyncState.CONFLICT:
-				statusIcon.setText('⚠️');
-				statusText.setText('冲突');
-				statusIndicator.addClass('openclaw-status-conflict');
-				break;
-				
-			case SyncState.ERROR:
-				statusIcon.setText('❌');
-				statusText.setText('错误');
-				statusIndicator.addClass('openclaw-status-error');
-				break;
-				
-			case SyncState.PAUSED:
-				statusIcon.setText('⏸️');
-				statusText.setText('已暂停');
-				statusIndicator.addClass('openclaw-status-paused');
-				break;
-		}
-		
+
 		// 进度条
 		if (this.status.state === SyncState.SYNCING) {
-			const progressContainer = statusCard.createDiv({ cls: 'openclaw-progress-container' });
+			const progressContainer = statusCard.createDiv({ cls: 'progress-container' });
 			
-			const progressBar = progressContainer.createDiv({ cls: 'openclaw-progress-bar' });
-			const progressFill = progressBar.createDiv({ cls: 'openclaw-progress-fill' });
-			progressFill.style.width = `${this.status.progress}%`;
+			const progressBar = progressContainer.createEl('div', { cls: 'progress-bar' });
+			const progressFill = progressBar.createEl('div', {
+				cls: 'progress-fill',
+				attr: { style: `width: ${this.status.progress}%` }
+			});
 			
-			const progressText = progressContainer.createEl('span', {
+			const progressText = progressContainer.createEl('div', {
 				text: `${this.status.progress.toFixed(1)}%`,
-				cls: 'openclaw-progress-text'
+				cls: 'progress-text'
 			});
 		}
-		
+
 		// 当前文件
 		if (this.status.currentFile) {
-			const currentFile = statusCard.createDiv({ cls: 'openclaw-current-file' });
-			currentFile.createEl('span', {
-				text: '当前文件:',
-				cls: 'openclaw-current-file-label'
-			});
-			currentFile.createEl('span', {
-				text: this.status.currentFile,
-				cls: 'openclaw-current-file-name'
+			const currentFile = statusCard.createDiv({ cls: 'current-file' });
+			currentFile.createEl('strong', { text: '当前文件: ' });
+			currentFile.createEl('span', { text: this.status.currentFile });
+		}
+
+		// 统计信息
+		const stats = statusCard.createDiv({ cls: 'stats' });
+		
+		if (this.status.filesSynced > 0) {
+			stats.createEl('div', {
+				text: `已同步文件: ${this.status.filesSynced}`,
+				cls: 'stat-item'
 			});
 		}
-		
-		// 统计信息
-		const stats = statusCard.createDiv({ cls: 'openclaw-sync-stats' });
 		
 		if (this.status.totalFiles > 0) {
 			stats.createEl('div', {
-				text: `文件: ${this.status.filesSynced} / ${this.status.totalFiles}`,
-				cls: 'openclaw-stat-item'
+				text: `总文件数: ${this.status.totalFiles}`,
+				cls: 'stat-item'
 			});
 		}
 		
 		if (this.status.lastSync) {
-			const lastSyncText = stats.createEl('div', {
-				cls: 'openclaw-stat-item'
-			});
-			
-			lastSyncText.createEl('span', {
-				text: '上次同步:',
-				cls: 'openclaw-stat-label'
-			});
-			
-			lastSyncText.createEl('span', {
-				text: this.formatTimeAgo(this.status.lastSync),
-				cls: 'openclaw-stat-value'
+			stats.createEl('div', {
+				text: `最后同步: ${this.formatDate(this.status.lastSync)}`,
+				cls: 'stat-item'
 			});
 		}
-		
-		// 控制按钮
-		const controls = this.contentContainer.createDiv({ cls: 'openclaw-sync-controls' });
-		
-		// 同步按钮
-		const syncButton = controls.createEl('button', {
-			text: '🔄 立即同步',
-			cls: 'openclaw-control-button openclaw-control-sync'
-		});
-		
-		syncButton.addEventListener('click', () => {
-			this.syncEngine.sync().catch(console.error);
-		});
-		
-		// 暂停/恢复按钮
-		if (this.status.state === SyncState.SYNCING || this.status.state === SyncState.PAUSED) {
-			const pauseResumeButton = controls.createEl('button', {
-				text: this.status.state === SyncState.PAUSED ? '▶️ 恢复' : '⏸️ 暂停',
-				cls: 'openclaw-control-button openclaw-control-pause'
-			});
-			
-			pauseResumeButton.addEventListener('click', () => {
-				if (this.status.state === SyncState.PAUSED) {
-					this.syncEngine.resume();
-				} else {
-					this.syncEngine.pause();
-				}
-			});
-		}
-		
-		// 错误列表
+
+		// 错误信息
 		if (this.status.errors.length > 0) {
-			const errorsContainer = this.contentContainer.createDiv({ cls: 'openclaw-errors-container' });
-			errorsContainer.createEl('h3', { text: '错误日志' });
+			const errorsSection = this.contentEl.createDiv({ cls: 'errors-section' });
+			errorsSection.createEl('h3', { text: '错误日志' });
 			
-			const errorsList = errorsContainer.createDiv({ cls: 'openclaw-errors-list' });
+			const errorsList = errorsSection.createEl('div', { cls: 'errors-list' });
 			
 			this.status.errors.forEach((error, index) => {
-				const errorItem = errorsList.createDiv({ cls: 'openclaw-error-item' });
+				const errorItem = errorsList.createEl('div', { cls: 'error-item' });
 				
-				errorItem.createEl('span', {
+				const errorHeader = errorItem.createEl('div', { cls: 'error-header' });
+				errorHeader.createEl('span', {
 					text: '❌',
-					cls: 'openclaw-error-icon'
+					cls: 'error-icon'
 				});
 				
-				const errorContent = errorItem.createDiv({ cls: 'openclaw-error-content' });
-				
-				errorContent.createEl('div', {
+				errorHeader.createEl('span', {
 					text: error.message,
-					cls: 'openclaw-error-message'
+					cls: 'error-message'
 				});
 				
-				if (error.file) {
-					errorContent.createEl('div', {
-						text: `文件: ${error.file}`,
-						cls: 'openclaw-error-file'
-					});
-				}
-				
-				errorContent.createEl('div', {
-					text: this.formatTimeAgo(error.timestamp),
-					cls: 'openclaw-error-time'
+				errorHeader.createEl('span', {
+					text: this.formatDate(error.timestamp),
+					cls: 'error-time'
 				});
 				
-				if (error.retryable) {
-					const retryButton = errorItem.createEl('button', {
-						text: '重试',
-						cls: 'openclaw-error-retry'
+				// 错误详情切换
+				const toggleButton = errorHeader.createEl('button', {
+					text: this.errorDetailsVisible.get(index) ? '隐藏详情' : '显示详情',
+					cls: 'error-toggle-button'
+				});
+				
+				toggleButton.addEventListener('click', () => {
+					const isVisible = this.errorDetailsVisible.get(index) || false;
+					this.errorDetailsVisible.set(index, !isVisible);
+					this.render();
+				});
+				
+				// 错误详情
+				if (this.errorDetailsVisible.get(index)) {
+					const errorDetails = errorItem.createEl('div', { cls: 'error-details' });
+					
+					if (error.file) {
+						errorDetails.createEl('div', {
+							text: `文件: ${error.file}`,
+							cls: 'error-file'
+						});
+					}
+					
+					errorDetails.createEl('div', {
+						text: `时间: ${error.timestamp.toLocaleString()}`,
+						cls: 'error-timestamp'
 					});
 					
-					retryButton.addEventListener('click', () => {
-						// 在实际实现中，这里应该触发重试逻辑
-						console.log('重试错误:', error);
+					errorDetails.createEl('div', {
+						text: `可重试: ${error.retryable ? '是' : '否'}`,
+						cls: 'error-retryable'
 					});
+					
+					// 重试按钮
+					if (error.retryable && error.file) {
+						const retryButton = errorDetails.createEl('button', {
+							text: '重试',
+							cls: 'retry-button'
+						});
+						
+						retryButton.addEventListener('click', () => {
+							// 这里可以添加重试逻辑
+							new Notice(`重试文件: ${error.file}`);
+						});
+					}
 				}
 			});
 			
 			// 清除错误按钮
 			if (this.status.errors.length > 0) {
-				const clearErrorsButton = errorsContainer.createEl('button', {
-					text: '清除错误',
-					cls: 'openclaw-control-button openclaw-control-clear'
+				const clearErrorsButton = errorsSection.createEl('button', {
+					text: '清除所有错误',
+					cls: 'clear-errors-button'
 				});
 				
 				clearErrorsButton.addEventListener('click', () => {
-					// 在实际实现中，这里应该清除错误
-					console.log('清除错误');
+					// 这里可以添加清除错误逻辑
+					new Notice('错误日志已清除');
 				});
 			}
 		}
-		
-		// 详细统计
-		this.renderDetailedStats();
-	}
 
-	private renderDetailedStats(): void {
-		const statsContainer = this.contentContainer.createDiv({ cls: 'openclaw-detailed-stats' });
-		statsContainer.createEl('h3', { text: '同步统计' });
+		// 操作历史
+		const historySection = this.contentEl.createDiv({ cls: 'history-section' });
+		historySection.createEl('h3', { text: '同步历史' });
 		
-		const statsGrid = statsContainer.createDiv({ cls: 'openclaw-stats-grid' });
+		// 这里可以添加同步历史记录
+		const historyPlaceholder = historySection.createEl('div', {
+			text: '同步历史记录将在这里显示',
+			cls: 'history-placeholder'
+		});
+
+		// 性能统计
+		const performanceSection = this.contentEl.createDiv({ cls: 'performance-section' });
+		performanceSection.createEl('h3', { text: '性能统计' });
 		
-		// 这里可以添加更多统计信息
-		// 例如：同步次数、平均同步时间、成功/失败率等
+		const performanceStats = performanceSection.createDiv({ cls: 'performance-stats' });
 		
-		const statItems = [
-			{ label: '同步状态', value: this.getStateText(this.status.state) },
-			{ label: '同步进度', value: `${this.status.progress.toFixed(1)}%` },
-			{ label: '已同步文件', value: this.status.filesSynced.toString() },
-			{ label: '总文件数', value: this.status.totalFiles.toString() },
-			{ label: '错误数量', value: this.status.errors.length.toString() }
-		];
+		// 这里可以添加性能统计数据
+		performanceStats.createEl('div', {
+			text: '平均同步时间: --',
+			cls: 'performance-item'
+		});
 		
-		statItems.forEach(item => {
-			const statItem = statsGrid.createDiv({ cls: 'openclaw-stat-grid-item' });
-			
-			statItem.createEl('div', {
-				text: item.label,
-				cls: 'openclaw-stat-grid-label'
-			});
-			
-			statItem.createEl('div', {
-				text: item.value,
-				cls: 'openclaw-stat-grid-value'
-			});
+		performanceStats.createEl('div', {
+			text: '最快同步时间: --',
+			cls: 'performance-item'
+		});
+		
+		performanceStats.createEl('div', {
+			text: '最慢同步时间: --',
+			cls: 'performance-item'
+		});
+		
+		performanceStats.createEl('div', {
+			text: '成功率: --',
+			cls: 'performance-item'
 		});
 	}
 
-	private getStateText(state: SyncState): string {
-		switch (state) {
-			case SyncState.IDLE: return '空闲';
-			case SyncState.SYNCING: return '同步中';
-			case SyncState.CONFLICT: return '冲突';
-			case SyncState.ERROR: return '错误';
-			case SyncState.PAUSED: return '已暂停';
-			default: return '未知';
+	private getStatusIcon(): string {
+		switch (this.status.state) {
+			case SyncState.IDLE:
+				return '✅';
+			case SyncState.SYNCING:
+				return '🔄';
+			case SyncState.CONFLICT:
+				return '⚠️';
+			case SyncState.ERROR:
+				return '❌';
+			case SyncState.PAUSED:
+				return '⏸️';
+			default:
+				return '❓';
 		}
 	}
 
-	private formatTimeAgo(date: Date): string {
+	private getStatusText(): string {
+		switch (this.status.state) {
+			case SyncState.IDLE:
+				return '空闲';
+			case SyncState.SYNCING:
+				return '同步中';
+			case SyncState.CONFLICT:
+				return '存在冲突';
+			case SyncState.ERROR:
+				return '错误';
+			case SyncState.PAUSED:
+				return '已暂停';
+			default:
+				return '未知状态';
+		}
+	}
+
+	private formatDate(date: Date): string {
 		const now = new Date();
 		const diffMs = now.getTime() - date.getTime();
-		const diffSec = Math.floor(diffMs / 1000);
-		const diffMin = Math.floor(diffSec / 60);
-		const diffHour = Math.floor(diffMin / 60);
+		const diffMins = Math.floor(diffMs / (1000 * 60));
 		
-		if (diffSec < 60) {
-			return `${diffSec}秒前`;
-		} else if (diffMin < 60) {
-			return `${diffMin}分钟前`;
-		} else if (diffHour < 24) {
-			return `${diffHour}小时前`;
+		if (diffMins < 1) {
+			return '刚刚';
+		} else if (diffMins < 60) {
+			return `${diffMins}分钟前`;
+		} else if (diffMins < 24 * 60) {
+			const hours = Math.floor(diffMins / 60);
+			return `${hours}小时前`;
 		} else {
-			return date.toLocaleString();
+			return date.toLocaleDateString();
 		}
 	}
 
-	// 公开方法
+	private startAutoRefresh(): void {
+		this.stopAutoRefresh();
+		this.refreshIntervalId = window.setInterval(() => {
+			this.render();
+		}, 5000); // 每5秒刷新一次
+	}
+
+	private stopAutoRefresh(): void {
+		if (this.refreshIntervalId) {
+			clearInterval(this.refreshIntervalId);
+			this.refreshIntervalId = 0;
+		}
+	}
+
 	open(): void {
-		const leaf = this.app.workspace.getLeaf(false);
+		const leaf = this.app.workspace.getLeaf(true);
 		leaf.setViewState({
 			type: SYNC_STATUS_VIEW_TYPE,
 			active: true
 		});
 	}
-
-	refresh(): void {
-		this.renderContent();
-	}
-
-	private contentContainer: HTMLElement;
 }

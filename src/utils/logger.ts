@@ -1,283 +1,221 @@
-export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+import { OpenClawMemorySyncSettings } from '../main';
+
+export enum LogLevel {
+	DEBUG = 'debug',
+	INFO = 'info',
+	WARN = 'warn',
+	ERROR = 'error'
+}
 
 export interface LogEntry {
+	timestamp: Date;
 	level: LogLevel;
 	message: string;
-	timestamp: Date;
-	context?: string;
+	source?: string;
 	data?: any;
 }
 
-export interface LoggerOptions {
-	level: LogLevel;
-	maxEntries: number;
-	enableConsole: boolean;
-	enableFile: boolean;
-	filePath?: string;
-}
-
-const DEFAULT_OPTIONS: LoggerOptions = {
-	level: 'info',
-	maxEntries: 1000,
-	enableConsole: true,
-	enableFile: false
-};
-
 export class Logger {
-	private entries: LogEntry[] = [];
-	private options: LoggerOptions;
+	private logs: LogEntry[] = [];
+	private maxLogs: number = 1000;
+	private listeners: ((entry: LogEntry) => void)[] = [];
 
-	constructor(options?: Partial<LoggerOptions>) {
-		this.options = { ...DEFAULT_OPTIONS, ...options };
+	constructor(private settings: OpenClawMemorySyncSettings) {}
+
+	debug(message: string, source?: string, data?: any): void {
+		this.log(LogLevel.DEBUG, message, source, data);
 	}
 
-	debug(message: string, context?: string, data?: any): void {
-		this.log('debug', message, context, data);
+	info(message: string, source?: string, data?: any): void {
+		this.log(LogLevel.INFO, message, source, data);
 	}
 
-	info(message: string, context?: string, data?: any): void {
-		this.log('info', message, context, data);
+	warn(message: string, source?: string, data?: any): void {
+		this.log(LogLevel.WARN, message, source, data);
 	}
 
-	warn(message: string, context?: string, data?: any): void {
-		this.log('warn', message, context, data);
+	error(message: string, source?: string, data?: any): void {
+		this.log(LogLevel.ERROR, message, source, data);
 	}
 
-	error(message: string, context?: string, data?: any): void {
-		this.log('error', message, context, data);
-	}
-
-	private log(level: LogLevel, message: string, context?: string, data?: any): void {
-		// 检查日志级别
+	private log(level: LogLevel, message: string, source?: string, data?: any): void {
+		// 检查日志级别是否应该记录
 		if (!this.shouldLog(level)) {
 			return;
 		}
 
 		const entry: LogEntry = {
+			timestamp: new Date(),
 			level,
 			message,
-			timestamp: new Date(),
-			context,
+			source,
 			data
 		};
 
-		// 添加到内存
-		this.entries.push(entry);
-		
-		// 限制条目数量
-		if (this.entries.length > this.options.maxEntries) {
-			this.entries = this.entries.slice(-this.options.maxEntries);
+		// 添加到日志数组
+		this.logs.push(entry);
+
+		// 限制日志数量
+		if (this.logs.length > this.maxLogs) {
+			this.logs = this.logs.slice(-this.maxLogs);
 		}
 
 		// 输出到控制台
-		if (this.options.enableConsole) {
-			this.logToConsole(entry);
-		}
+		this.consoleLog(entry);
 
-		// 输出到文件
-		if (this.options.enableFile && this.options.filePath) {
-			this.logToFile(entry).catch(console.error);
-		}
+		// 通知监听器
+		this.notifyListeners(entry);
 	}
 
 	private shouldLog(level: LogLevel): boolean {
-		const levels: Record<LogLevel, number> = {
-			debug: 0,
-			info: 1,
-			warn: 2,
-			error: 3
+		const levelOrder = {
+			[LogLevel.DEBUG]: 0,
+			[LogLevel.INFO]: 1,
+			[LogLevel.WARN]: 2,
+			[LogLevel.ERROR]: 3
 		};
-		
-		return levels[level] >= levels[this.options.level];
+
+		const currentLevel = levelOrder[this.settings.logLevel];
+		const messageLevel = levelOrder[level];
+
+		return messageLevel >= currentLevel;
 	}
 
-	private logToConsole(entry: LogEntry): void {
+	private consoleLog(entry: LogEntry): void {
 		const timestamp = entry.timestamp.toISOString().split('T')[1].split('.')[0];
-		const context = entry.context ? `[${entry.context}]` : '';
-		const levelIcon = this.getLevelIcon(entry.level);
-		const levelColor = this.getLevelColor(entry.level);
-		
-		const style = `color: ${levelColor}; font-weight: bold;`;
-		const message = `%c${levelIcon} [${timestamp}]${context} ${entry.message}`;
-		
-		console.log(message, style);
-		
-		if (entry.data) {
-			console.log('Data:', entry.data);
+		const prefix = `[${timestamp}] [${entry.level.toUpperCase()}]`;
+		const source = entry.source ? `[${entry.source}]` : '';
+		const message = `${prefix}${source} ${entry.message}`;
+
+		switch (entry.level) {
+			case LogLevel.DEBUG:
+				console.debug(message, entry.data || '');
+				break;
+			case LogLevel.INFO:
+				console.info(message, entry.data || '');
+				break;
+			case LogLevel.WARN:
+				console.warn(message, entry.data || '');
+				break;
+			case LogLevel.ERROR:
+				console.error(message, entry.data || '');
+				break;
 		}
 	}
 
-	private async logToFile(entry: LogEntry): Promise<void> {
-		// 在实际实现中，这里应该写入文件
-		// 由于Obsidian插件的限制，文件写入需要特殊处理
-		// 暂时留空，后续实现
+	private notifyListeners(entry: LogEntry): void {
+		this.listeners.forEach(listener => {
+			try {
+				listener(entry);
+			} catch (error) {
+				console.error('日志监听器错误:', error);
+			}
+		});
 	}
 
-	private getLevelIcon(level: LogLevel): string {
-		switch (level) {
-			case 'debug': return '🐛';
-			case 'info': return 'ℹ️';
-			case 'warn': return '⚠️';
-			case 'error': return '❌';
-			default: return '📝';
-		}
-	}
+	// 公共方法
+	getLogs(level?: LogLevel, limit?: number): LogEntry[] {
+		let filteredLogs = this.logs;
 
-	private getLevelColor(level: LogLevel): string {
-		switch (level) {
-			case 'debug': return '#888';
-			case 'info': return '#2196F3';
-			case 'warn': return '#FF9800';
-			case 'error': return '#F44336';
-			default: return '#000';
-		}
-	}
-
-	// 查询方法
-	getEntries(level?: LogLevel, limit?: number): LogEntry[] {
-		let entries = this.entries;
-		
 		if (level) {
-			entries = entries.filter(entry => entry.level === level);
+			filteredLogs = filteredLogs.filter(log => log.level === level);
 		}
-		
-		if (limit) {
-			entries = entries.slice(-limit);
+
+		if (limit && limit > 0) {
+			filteredLogs = filteredLogs.slice(-limit);
 		}
-		
-		return entries;
+
+		return [...filteredLogs];
 	}
 
-	getEntriesByContext(context: string, limit?: number): LogEntry[] {
-		let entries = this.entries.filter(entry => entry.context === context);
-		
-		if (limit) {
-			entries = entries.slice(-limit);
+	clearLogs(): void {
+		this.logs = [];
+	}
+
+	onLog(listener: (entry: LogEntry) => void): void {
+		this.listeners.push(listener);
+	}
+
+	offLog(listener: (entry: LogEntry) => void): void {
+		const index = this.listeners.indexOf(listener);
+		if (index > -1) {
+			this.listeners.splice(index, 1);
 		}
-		
-		return entries;
 	}
 
-	getEntriesSince(timestamp: Date): LogEntry[] {
-		return this.entries.filter(entry => entry.timestamp >= timestamp);
-	}
-
-	// 统计方法
 	getStats(): {
 		total: number;
 		byLevel: Record<LogLevel, number>;
-		byContext: Record<string, number>;
+		bySource: Record<string, number>;
+		oldest: Date | null;
+		newest: Date | null;
 	} {
 		const stats = {
-			total: this.entries.length,
+			total: this.logs.length,
 			byLevel: {
-				debug: 0,
-				info: 0,
-				warn: 0,
-				error: 0
+				[LogLevel.DEBUG]: 0,
+				[LogLevel.INFO]: 0,
+				[LogLevel.WARN]: 0,
+				[LogLevel.ERROR]: 0
 			},
-			byContext: {} as Record<string, number>
+			bySource: {} as Record<string, number>,
+			oldest: this.logs.length > 0 ? this.logs[0].timestamp : null,
+			newest: this.logs.length > 0 ? this.logs[this.logs.length - 1].timestamp : null
 		};
-		
-		for (const entry of this.entries) {
-			stats.byLevel[entry.level]++;
-			
-			if (entry.context) {
-				stats.byContext[entry.context] = (stats.byContext[entry.context] || 0) + 1;
+
+		for (const log of this.logs) {
+			stats.byLevel[log.level]++;
+
+			if (log.source) {
+				stats.bySource[log.source] = (stats.bySource[log.source] || 0) + 1;
 			}
 		}
-		
+
 		return stats;
 	}
 
-	// 清理方法
-	clear(): void {
-		this.entries = [];
+	exportLogs(format: 'json' | 'text' = 'json'): string {
+		if (format === 'json') {
+			return JSON.stringify(this.logs, null, 2);
+		} else {
+			return this.logs.map(log => {
+				const timestamp = log.timestamp.toISOString();
+				const level = log.level.toUpperCase().padEnd(5);
+				const source = log.source ? ` [${log.source}]` : '';
+				return `${timestamp} ${level}${source} ${log.message}`;
+			}).join('\n');
+		}
 	}
 
-	clearByLevel(level: LogLevel): void {
-		this.entries = this.entries.filter(entry => entry.level !== level);
+	// 工具方法
+	static formatError(error: any): string {
+		if (error instanceof Error) {
+			return `${error.name}: ${error.message}\n${error.stack || ''}`;
+		} else if (typeof error === 'string') {
+			return error;
+		} else {
+			try {
+				return JSON.stringify(error);
+			} catch {
+				return String(error);
+			}
+		}
 	}
 
-	clearByContext(context: string): void {
-		this.entries = this.entries.filter(entry => entry.context !== context);
-	}
-
-	clearBefore(timestamp: Date): void {
-		this.entries = this.entries.filter(entry => entry.timestamp >= timestamp);
-	}
-
-	// 配置方法
-	setLevel(level: LogLevel): void {
-		this.options.level = level;
-	}
-
-	getLevel(): LogLevel {
-		return this.options.level;
-	}
-
-	setMaxEntries(maxEntries: number): void {
-		this.options.maxEntries = maxEntries;
+	static createContextLogger(source: string, settings: OpenClawMemorySyncSettings): Logger {
+		const logger = new Logger(settings);
 		
-		// 立即应用限制
-		if (this.entries.length > maxEntries) {
-			this.entries = this.entries.slice(-maxEntries);
-		}
+		return {
+			debug: (message: string, data?: any) => logger.debug(message, source, data),
+			info: (message: string, data?: any) => logger.info(message, source, data),
+			warn: (message: string, data?: any) => logger.warn(message, source, data),
+			error: (message: string, data?: any) => logger.error(message, source, data),
+			getLogs: (level?: LogLevel, limit?: number) => logger.getLogs(level, limit),
+			clearLogs: () => logger.clearLogs(),
+			onLog: (listener: (entry: LogEntry) => void) => logger.onLog(listener),
+			offLog: (listener: (entry: LogEntry) => void) => logger.offLog(listener),
+			getStats: () => logger.getStats(),
+			exportLogs: (format?: 'json' | 'text') => logger.exportLogs(format)
+		} as Logger;
 	}
-
-	enableConsole(enabled: boolean): void {
-		this.options.enableConsole = enabled;
-	}
-
-	enableFile(enabled: boolean, filePath?: string): void {
-		this.options.enableFile = enabled;
-		if (filePath) {
-			this.options.filePath = filePath;
-		}
-	}
-
-	// 导出方法
-	exportAsText(): string {
-		return this.entries.map(entry => {
-			const timestamp = entry.timestamp.toISOString();
-			const context = entry.context ? ` [${entry.context}]` : '';
-			const data = entry.data ? ` | ${JSON.stringify(entry.data)}` : '';
-			return `${timestamp} ${entry.level.toUpperCase()}${context}: ${entry.message}${data}`;
-		}).join('\n');
-	}
-
-	exportAsJSON(): string {
-		return JSON.stringify(this.entries, null, 2);
-	}
-}
-
-// 全局日志实例
-let globalLogger: Logger | null = null;
-
-export function getLogger(): Logger {
-	if (!globalLogger) {
-		globalLogger = new Logger();
-	}
-	return globalLogger;
-}
-
-export function setGlobalLogger(logger: Logger): void {
-	globalLogger = logger;
-}
-
-// 快捷方法
-export function debug(message: string, context?: string, data?: any): void {
-	getLogger().debug(message, context, data);
-}
-
-export function info(message: string, context?: string, data?: any): void {
-	getLogger().info(message, context, data);
-}
-
-export function warn(message: string, context?: string, data?: any): void {
-	getLogger().warn(message, context, data);
-}
-
-export function error(message: string, context?: string, data?: any): void {
-	getLogger().error(message, context, data);
 }

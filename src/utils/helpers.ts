@@ -1,7 +1,7 @@
 import { TFile, TFolder, normalizePath } from 'obsidian';
 
 /**
- * 文件系统工具类
+ * 文件系统相关工具函数
  */
 export class FileSystemHelper {
 	/**
@@ -9,138 +9,79 @@ export class FileSystemHelper {
 	 */
 	static async ensureDirectory(app: any, path: string): Promise<void> {
 		const normalizedPath = normalizePath(path);
-		const dirPath = normalizedPath.split('/').slice(0, -1).join('/');
 		
-		if (dirPath) {
-			await app.vault.createFolder(dirPath).catch(() => {
-				// 文件夹可能已存在，忽略错误
-			});
+		// 如果路径为空，直接返回
+		if (!normalizedPath || normalizedPath === '.') {
+			return;
 		}
+		
+		// 检查目录是否存在
+		const folder = app.vault.getAbstractFileByPath(normalizedPath);
+		if (folder instanceof TFolder) {
+			return;
+		}
+		
+		// 如果存在同名文件，抛出错误
+		if (folder instanceof TFile) {
+			throw new Error(`路径 ${normalizedPath} 已存在但不是文件夹`);
+		}
+		
+		// 创建目录
+		await app.vault.createFolder(normalizedPath);
 	}
 
 	/**
-	 * 获取目录下的所有Markdown文件
+	 * 获取文件扩展名
 	 */
-	static getMarkdownFilesInFolder(app: any, folderPath: string): TFile[] {
-		const folder = app.vault.getAbstractFileByPath(folderPath);
-		
-		if (!folder || !(folder instanceof TFolder)) {
-			return [];
+	static getFileExtension(filename: string): string {
+		const lastDotIndex = filename.lastIndexOf('.');
+		if (lastDotIndex === -1) {
+			return '';
 		}
-
-		const files: TFile[] = [];
-		
-		const walkFolder = (folder: TFolder) => {
-			for (const child of folder.children) {
-				if (child instanceof TFile && child.extension === 'md') {
-					files.push(child);
-				} else if (child instanceof TFolder) {
-					walkFolder(child);
-				}
-			}
-		};
-		
-		walkFolder(folder);
-		return files;
+		return filename.substring(lastDotIndex + 1).toLowerCase();
 	}
 
 	/**
 	 * 检查文件是否匹配排除模式
 	 */
-	static isExcluded(filePath: string, excludePatterns: string[]): boolean {
+	static isFileExcluded(filePath: string, excludePatterns: string[]): boolean {
 		for (const pattern of excludePatterns) {
-			if (pattern.startsWith('*.')) {
-				// 通配符扩展名匹配
-				const ext = pattern.substring(1);
-				if (filePath.endsWith(ext)) {
-					return true;
-				}
-			} else if (pattern.startsWith('.')) {
-				// 隐藏文件匹配
-				const parts = filePath.split('/');
-				if (parts.some(part => part.startsWith('.'))) {
-					return true;
-				}
-			} else if (pattern.endsWith('/')) {
-				// 目录匹配
-				if (filePath.includes(pattern)) {
-					return true;
-				}
-			} else {
-				// 精确匹配
-				if (filePath === pattern) {
-					return true;
-				}
+			if (this.matchesPattern(filePath, pattern)) {
+				return true;
 			}
 		}
 		return false;
 	}
 
 	/**
-	 * 获取文件统计信息
+	 * 检查文件路径是否匹配模式
 	 */
-	static async getFileStats(app: any, file: TFile): Promise<{
-		size: number;
-		lines: number;
-		words: number;
-		created: Date;
-		modified: Date;
-	}> {
-		const stats = app.vault.getFileStats(file);
-		const content = await app.vault.read(file);
-		
-		return {
-			size: file.stat.size,
-			lines: content.split('\n').length,
-			words: content.split(/\s+/).length,
-			created: new Date(stats.ctime),
-			modified: new Date(stats.mtime)
-		};
-	}
-}
-
-/**
- * 日期时间工具类
- */
-export class DateTimeHelper {
-	/**
-	 * 格式化时间为相对时间
-	 */
-	static formatRelativeTime(date: Date): string {
-		const now = new Date();
-		const diffMs = now.getTime() - date.getTime();
-		const diffSec = Math.floor(diffMs / 1000);
-		const diffMin = Math.floor(diffSec / 60);
-		const diffHour = Math.floor(diffMin / 60);
-		const diffDay = Math.floor(diffHour / 24);
-		
-		if (diffSec < 60) {
-			return `${diffSec}秒前`;
-		} else if (diffMin < 60) {
-			return `${diffMin}分钟前`;
-		} else if (diffHour < 24) {
-			return `${diffHour}小时前`;
-		} else if (diffDay < 7) {
-			return `${diffDay}天前`;
-		} else {
-			return date.toLocaleDateString();
+	private static matchesPattern(filePath: string, pattern: string): boolean {
+		// 清理模式
+		pattern = pattern.trim();
+		if (!pattern) {
+			return false;
 		}
-	}
 
-	/**
-	 * 格式化日期时间
-	 */
-	static formatDateTime(date: Date, format: 'short' | 'medium' | 'long' = 'medium'): string {
-		const options: Intl.DateTimeFormatOptions = {
-			year: 'numeric',
-			month: format === 'short' ? 'numeric' : 'long',
-			day: 'numeric',
-			hour: '2-digit',
-			minute: '2-digit',
-			second: format === 'long' ? '2-digit' : undefined
-		};
-		
-		return date.toLocaleString(undefined, options);
+		// 通配符扩展名匹配 (如 *.tmp)
+		if (pattern.startsWith('*.')) {
+			const ext = pattern.substring(1); // 包括点号
+			return filePath.endsWith(ext);
+		}
+
+		// 隐藏文件匹配 (如 .*)
+		if (pattern.startsWith('.')) {
+			const parts = filePath.split('/');
+			return parts.some(part => part.startsWith('.'));
+		}
+
+		// 目录匹配 (如 node_modules/)
+		if (pattern.endsWith('/')) {
+			return filePath.includes(pattern);
+		}
+
+		// 精确匹配
+		return filePath === pattern;
 	}
 
 	/**
@@ -157,58 +98,50 @@ export class DateTimeHelper {
 	}
 
 	/**
-	 * 计算时间差
+	 * 获取相对时间描述
 	 */
-	static timeDifference(start: Date, end: Date): {
-		days: number;
-		hours: number;
-		minutes: number;
-		seconds: number;
-		milliseconds: number;
-	} {
-		const diffMs = end.getTime() - start.getTime();
+	static getRelativeTime(date: Date): string {
+		const now = new Date();
+		const diffMs = now.getTime() - date.getTime();
+		const diffSeconds = Math.floor(diffMs / 1000);
+		const diffMinutes = Math.floor(diffSeconds / 60);
+		const diffHours = Math.floor(diffMinutes / 60);
+		const diffDays = Math.floor(diffHours / 24);
 		
-		return {
-			days: Math.floor(diffMs / (1000 * 60 * 60 * 24)),
-			hours: Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
-			minutes: Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60)),
-			seconds: Math.floor((diffMs % (1000 * 60)) / 1000),
-			milliseconds: diffMs % 1000
-		};
+		if (diffSeconds < 60) {
+			return '刚刚';
+		} else if (diffMinutes < 60) {
+			return `${diffMinutes}分钟前`;
+		} else if (diffHours < 24) {
+			return `${diffHours}小时前`;
+		} else if (diffDays < 7) {
+			return `${diffDays}天前`;
+		} else {
+			return date.toLocaleDateString();
+		}
 	}
 }
 
 /**
- * 字符串工具类
+ * 字符串处理工具函数
  */
 export class StringHelper {
 	/**
-	 * 截断字符串并添加省略号
+	 * 安全截断字符串
 	 */
-	static truncate(text: string, maxLength: number, ellipsis: string = '...'): string {
+	static truncate(text: string, maxLength: number, suffix: string = '...'): string {
 		if (text.length <= maxLength) {
 			return text;
 		}
 		
-		return text.substring(0, maxLength - ellipsis.length) + ellipsis;
+		return text.substring(0, maxLength - suffix.length) + suffix;
 	}
 
 	/**
-	 * 安全地解析JSON
-	 */
-	static safeParseJSON<T>(jsonString: string, defaultValue: T): T {
-		try {
-			return JSON.parse(jsonString) as T;
-		} catch {
-			return defaultValue;
-		}
-	}
-
-	/**
-	 * 生成随机ID
+	 * 生成唯一ID
 	 */
 	static generateId(length: number = 8): string {
-		const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+		const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 		let result = '';
 		
 		for (let i = 0; i < length; i++) {
@@ -219,214 +152,227 @@ export class StringHelper {
 	}
 
 	/**
-	 * 清理文件名中的非法字符
+	 * 清理文件名
 	 */
 	static sanitizeFilename(filename: string): string {
+		// 移除非法字符
 		return filename.replace(/[<>:"/\\|?*]/g, '_');
 	}
 
 	/**
-	 * 提取文件扩展名
+	 * 高亮搜索关键词
 	 */
-	static getFileExtension(filename: string): string {
-		const parts = filename.split('.');
-		return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
+	static highlightSearch(text: string, query: string): string {
+		if (!query.trim()) {
+			return text;
+		}
+		
+		const regex = new RegExp(`(${this.escapeRegExp(query)})`, 'gi');
+		return text.replace(regex, '<mark>$1</mark>');
+	}
+
+	/**
+	 * 转义正则表达式特殊字符
+	 */
+	private static escapeRegExp(string: string): string {
+		return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 	}
 }
 
 /**
- * 数组工具类
+ * 日期时间工具函数
  */
-export class ArrayHelper {
+export class DateTimeHelper {
 	/**
-	 * 数组去重
+	 * 格式化日期时间
 	 */
-	static unique<T>(array: T[]): T[] {
-		return [...new Set(array)];
+	static formatDateTime(date: Date, format: string = 'yyyy-MM-dd HH:mm:ss'): string {
+		const map: Record<string, any> = {
+			yyyy: date.getFullYear(),
+			MM: String(date.getMonth() + 1).padStart(2, '0'),
+			dd: String(date.getDate()).padStart(2, '0'),
+			HH: String(date.getHours()).padStart(2, '0'),
+			mm: String(date.getMinutes()).padStart(2, '0'),
+			ss: String(date.getSeconds()).padStart(2, '0')
+		};
+		
+		return format.replace(/yyyy|MM|dd|HH|mm|ss/g, matched => map[matched]);
 	}
 
 	/**
-	 * 数组分组
+	 * 计算时间差
 	 */
-	static groupBy<T>(array: T[], keyFn: (item: T) => string): Record<string, T[]> {
-		return array.reduce((groups, item) => {
-			const key = keyFn(item);
-			if (!groups[key]) {
-				groups[key] = [];
+	static getTimeDifference(start: Date, end: Date): {
+		days: number;
+		hours: number;
+		minutes: number;
+		seconds: number;
+		milliseconds: number;
+	} {
+		const diffMs = Math.abs(end.getTime() - start.getTime());
+		
+		return {
+			days: Math.floor(diffMs / (1000 * 60 * 60 * 24)),
+			hours: Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+			minutes: Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60)),
+			seconds: Math.floor((diffMs % (1000 * 60)) / 1000),
+			milliseconds: diffMs % 1000
+		};
+	}
+
+	/**
+	 * 格式化时间差
+	 */
+	static formatTimeDifference(start: Date, end: Date): string {
+		const diff = this.getTimeDifference(start, end);
+		
+		if (diff.days > 0) {
+			return `${diff.days}天 ${diff.hours}小时`;
+		} else if (diff.hours > 0) {
+			return `${diff.hours}小时 ${diff.minutes}分钟`;
+		} else if (diff.minutes > 0) {
+			return `${diff.minutes}分钟 ${diff.seconds}秒`;
+		} else {
+			return `${diff.seconds}秒`;
+		}
+	}
+}
+
+/**
+ * 数组和对象工具函数
+ */
+export class CollectionHelper {
+	/**
+	 * 深拷贝对象
+	 */
+	static deepClone<T>(obj: T): T {
+		if (obj === null || typeof obj !== 'object') {
+			return obj;
+		}
+		
+		if (obj instanceof Date) {
+			return new Date(obj.getTime()) as any;
+		}
+		
+		if (obj instanceof Array) {
+			return obj.map(item => this.deepClone(item)) as any;
+		}
+		
+		if (typeof obj === 'object') {
+			const cloned: any = {};
+			for (const key in obj) {
+				if (obj.hasOwnProperty(key)) {
+					cloned[key] = this.deepClone(obj[key]);
+				}
 			}
-			groups[key].push(item);
+			return cloned;
+		}
+		
+		return obj;
+	}
+
+	/**
+	 * 数组去重
+	 */
+	static unique<T>(array: T[], key?: keyof T): T[] {
+		if (!key) {
+			return [...new Set(array)];
+		}
+		
+		const seen = new Set();
+		return array.filter(item => {
+			const value = item[key];
+			if (seen.has(value)) {
+				return false;
+			}
+			seen.add(value);
+			return true;
+		});
+	}
+
+	/**
+	 * 分组数组
+	 */
+	static groupBy<T>(array: T[], key: keyof T): Record<string, T[]> {
+		return array.reduce((groups, item) => {
+			const groupKey = String(item[key]);
+			if (!groups[groupKey]) {
+				groups[groupKey] = [];
+			}
+			groups[groupKey].push(item);
 			return groups;
 		}, {} as Record<string, T[]>);
 	}
 
 	/**
-	 * 数组分页
+	 * 分页数组
 	 */
 	static paginate<T>(array: T[], page: number, pageSize: number): T[] {
 		const start = (page - 1) * pageSize;
 		const end = start + pageSize;
 		return array.slice(start, end);
 	}
-
-	/**
-	 * 数组排序
-	 */
-	static sortBy<T>(array: T[], keyFn: (item: T) => any, ascending: boolean = true): T[] {
-		return [...array].sort((a, b) => {
-			const aValue = keyFn(a);
-			const bValue = keyFn(b);
-			
-			if (aValue < bValue) return ascending ? -1 : 1;
-			if (aValue > bValue) return ascending ? 1 : -1;
-			return 0;
-		});
-	}
 }
 
 /**
- * 对象工具类
- */
-export class ObjectHelper {
-	/**
-	 * 深度合并对象
-	 */
-	static deepMerge<T extends Record<string, any>>(target: T, source: Partial<T>): T {
-		const result = { ...target };
-		
-		for (const key in source) {
-			if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
-				result[key] = this.deepMerge(result[key] || {}, source[key] as any);
-			} else {
-				result[key] = source[key] as any;
-			}
-		}
-		
-		return result;
-	}
-
-	/**
-	 * 安全获取嵌套属性
-	 */
-	static getNested<T>(obj: any, path: string, defaultValue: T): T {
-		const keys = path.split('.');
-		let current = obj;
-		
-		for (const key of keys) {
-			if (current && typeof current === 'object' && key in current) {
-				current = current[key];
-			} else {
-				return defaultValue;
-			}
-		}
-		
-		return current as T;
-	}
-
-	/**
-	 * 过滤对象属性
-	 */
-	static filter<T extends Record<string, any>>(obj: T, predicate: (key: string, value: any) => boolean): Partial<T> {
-		const result: Partial<T> = {};
-		
-		for (const key in obj) {
-			if (predicate(key, obj[key])) {
-				result[key] = obj[key];
-			}
-		}
-		
-		return result;
-	}
-}
-
-/**
- * 验证工具类
- */
-export class ValidationHelper {
-	/**
-	 * 验证URL
-	 */
-	static isValidUrl(url: string): boolean {
-		try {
-			new URL(url);
-			return true;
-		} catch {
-			return false;
-		}
-	}
-
-	/**
-	 * 验证电子邮件
-	 */
-	static isValidEmail(email: string): boolean {
-		const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-		return emailRegex.test(email);
-	}
-
-	/**
-	 * 验证端口号
-	 */
-	static isValidPort(port: number): boolean {
-		return port > 0 && port <= 65535;
-	}
-
-	/**
-	 * 验证文件名
-	 */
-	static isValidFilename(filename: string): boolean {
-		const invalidChars = /[<>:"/\\|?*]/;
-		return !invalidChars.test(filename);
-	}
-}
-
-/**
- * 错误处理工具类
+ * 错误处理工具函数
  */
 export class ErrorHelper {
 	/**
-	 * 创建标准化的错误对象
+	 * 创建用户友好的错误消息
 	 */
-	static createError(
-		message: string,
-		code?: string,
-		details?: any
-	): {
-		message: string;
-		code?: string;
-		details?: any;
-		timestamp: Date;
-	} {
-		return {
-			message,
-			code,
-			details,
-			timestamp: new Date()
-		};
-	}
-
-	/**
-	 * 检查错误是否可重试
-	 */
-	static isRetryableError(error: any): boolean {
-		const retryableCodes = [
-			'ETIMEDOUT',
-			'ECONNRESET',
-			'ECONNREFUSED',
-			'EAI_AGAIN',
-			'ENOTFOUND'
-		];
+	static getUserFriendlyError(error: any): string {
+		if (typeof error === 'string') {
+			return error;
+		}
 		
-		return retryableCodes.includes(error.code) || 
-			   error.message?.includes('timeout') ||
-			   error.message?.includes('connection');
+		if (error instanceof Error) {
+			// 网络错误
+			if (error.message.includes('NetworkError') || error.message.includes('Failed to fetch')) {
+				return '网络连接失败，请检查网络设置';
+			}
+			
+			// 超时错误
+			if (error.message.includes('timeout') || error.message.includes('Timeout')) {
+				return '请求超时，请稍后重试';
+			}
+			
+			// 权限错误
+			if (error.message.includes('permission') || error.message.includes('access denied')) {
+				return '权限不足，请检查访问权限';
+			}
+			
+			// 其他错误
+			return error.message;
+		}
+		
+		// 未知错误
+		return '发生未知错误';
 	}
 
 	/**
-	 * 获取错误堆栈的简洁版本
+	 * 重试函数
 	 */
-	static getCleanStackTrace(error: Error): string {
-		const stack = error.stack || '';
-		return stack.split('\n')
-			.filter(line => !line.includes('node_modules'))
-			.join('\n');
+	static async retry<T>(
+		fn: () => Promise<T>,
+		maxRetries: number = 3,
+		delayMs: number = 1000
+	): Promise<T> {
+		let lastError: any;
+		
+		for (let i = 0; i < maxRetries; i++) {
+			try {
+				return await fn();
+			} catch (error) {
+				lastError = error;
+				
+				// 如果不是最后一次重试，等待一段时间
+				if (i < maxRetries - 1) {
+					await new Promise(resolve => setTimeout(resolve, delayMs * Math.pow(2, i)));
+				}
+			}
+		}
+		
+		throw lastError;
 	}
 }

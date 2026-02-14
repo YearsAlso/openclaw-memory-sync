@@ -7,5 +7,6 @@
   "author": "OpenClaw Assistant",
   "authorUrl": "https://openclaw.ai",
   "isDesktopOnly": false,
-  "fundingUrl": "https://github.com/sponsors/openclaw"
+  "fundingUrl": "https://github.com/sponsors/openclaw",
+  "css": "styles.css"
 }

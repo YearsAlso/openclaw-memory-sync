@@ -1,8 +1,9 @@
 import { App, Plugin, PluginSettingTab, Setting, Notice, TFile, TFolder } from 'obsidian';
 import { OpenClawAPIClient } from './api-client';
 import { SyncEngine, SyncStatus } from './sync-engine';
-import { MemoryView } from './views/memory-view';
-import { SyncStatusView } from './views/sync-status';
+import { MemoryView, MEMORY_VIEW_TYPE } from './src/views/memory-view';
+import { SyncStatusView, SYNC_STATUS_VIEW_TYPE } from './src/views/sync-status';
+import { getLogger, setGlobalLogger, Logger } from './src/utils/logger';
 
 interface OpenClawMemorySyncSettings {
 	apiUrl: string;
@@ -35,9 +36,20 @@ export default class OpenClawMemorySync extends Plugin {
 	memoryView: MemoryView;
 	syncStatusView: SyncStatusView;
 	syncIntervalId: number;
+	logger: Logger;
 
 	async onload() {
 		await this.loadSettings();
+
+		// 初始化日志系统
+		this.logger = new Logger({
+			level: this.settings.logLevel,
+			enableConsole: true,
+			enableFile: false
+		});
+		setGlobalLogger(this.logger);
+		
+		this.logger.info('OpenClaw Memory Sync插件开始加载', 'plugin');
 
 		// 初始化API客户端
 		this.apiClient = new OpenClawAPIClient(this.settings);
@@ -45,7 +57,18 @@ export default class OpenClawMemorySync extends Plugin {
 		// 初始化同步引擎
 		this.syncEngine = new SyncEngine(this.app, this.apiClient, this.settings);
 		
-		// 初始化视图
+		// 注册视图
+		this.registerView(
+			MEMORY_VIEW_TYPE,
+			(leaf) => new MemoryView(this.app, this.apiClient)
+		);
+		
+		this.registerView(
+			SYNC_STATUS_VIEW_TYPE,
+			(leaf) => new SyncStatusView(this.app, this.syncEngine)
+		);
+		
+		// 初始化视图实例
 		this.memoryView = new MemoryView(this.app, this.apiClient);
 		this.syncStatusView = new SyncStatusView(this.app, this.syncEngine);
 
@@ -100,25 +123,31 @@ export default class OpenClawMemorySync extends Plugin {
 
 		// 连接API服务器
 		try {
+			this.logger.info('正在连接OpenClaw API服务器...', 'api');
 			await this.apiClient.connect();
 			new Notice('✅ OpenClaw API连接成功');
+			this.logger.info('OpenClaw API连接成功', 'api');
 		} catch (error) {
-			new Notice(`❌ OpenClaw API连接失败: ${error.message}`);
-			console.error('OpenClaw API连接失败:', error);
+			const errorMsg = `OpenClaw API连接失败: ${error.message}`;
+			new Notice(`❌ ${errorMsg}`);
+			this.logger.error(errorMsg, 'api', error);
 		}
 
 		// 启动自动同步
 		if (this.settings.autoSync) {
 			this.startAutoSync();
+			this.logger.info(`自动同步已启动，间隔: ${this.settings.syncInterval}秒`, 'sync');
 		}
 
 		// 创建目标文件夹
 		await this.ensureTargetFolder();
 
-		console.log('OpenClaw Memory Sync插件加载完成');
+		this.logger.info('OpenClaw Memory Sync插件加载完成', 'plugin');
 	}
 
 	async onunload() {
+		this.logger.info('OpenClaw Memory Sync插件开始卸载', 'plugin');
+		
 		// 停止自动同步
 		this.stopAutoSync();
 		
@@ -128,7 +157,7 @@ export default class OpenClawMemorySync extends Plugin {
 		// 清理资源
 		this.syncEngine.cleanup();
 		
-		console.log('OpenClaw Memory Sync插件卸载完成');
+		this.logger.info('OpenClaw Memory Sync插件卸载完成', 'plugin');
 	}
 
 	async loadSettings() {
@@ -141,12 +170,17 @@ export default class OpenClawMemorySync extends Plugin {
 
 	async syncNow() {
 		try {
+			this.logger.info('开始手动同步OpenClaw记忆库', 'sync');
 			new Notice('🔄 开始同步OpenClaw记忆库...');
+			
 			await this.syncEngine.sync();
+			
+			this.logger.info('OpenClaw记忆库同步完成', 'sync');
 			new Notice('✅ OpenClaw记忆库同步完成');
 		} catch (error) {
-			new Notice(`❌ 同步失败: ${error.message}`);
-			console.error('同步失败:', error);
+			const errorMsg = `同步失败: ${error.message}`;
+			this.logger.error(errorMsg, 'sync', error);
+			new Notice(`❌ ${errorMsg}`);
 		}
 	}
 
@@ -157,18 +191,19 @@ export default class OpenClawMemorySync extends Plugin {
 		
 		this.syncIntervalId = window.setInterval(() => {
 			if (this.syncEngine.getStatus().state === 'idle') {
+				this.logger.debug('自动同步触发', 'sync');
 				this.syncNow();
 			}
 		}, this.settings.syncInterval * 1000);
 		
-		console.log(`自动同步已启动，间隔: ${this.settings.syncInterval}秒`);
+		this.logger.info(`自动同步已启动，间隔: ${this.settings.syncInterval}秒`, 'sync');
 	}
 
 	stopAutoSync() {
 		if (this.syncIntervalId) {
 			clearInterval(this.syncIntervalId);
 			this.syncIntervalId = 0;
-			console.log('自动同步已停止');
+			this.logger.info('自动同步已停止', 'sync');
 		}
 	}
 
@@ -182,10 +217,12 @@ export default class OpenClawMemorySync extends Plugin {
 		if (!folder) {
 			// 创建文件夹
 			await vault.createFolder(folderPath);
-			console.log(`创建目标文件夹: ${folderPath}`);
+			this.logger.info(`创建目标文件夹: ${folderPath}`, 'filesystem');
 		} else if (!(folder instanceof TFolder)) {
 			// 存在同名文件，不是文件夹
-			console.warn(`路径 ${folderPath} 已存在但不是文件夹`);
+			this.logger.warn(`路径 ${folderPath} 已存在但不是文件夹`, 'filesystem');
+		} else {
+			this.logger.debug(`目标文件夹已存在: ${folderPath}`, 'filesystem');
 		}
 	}
 }

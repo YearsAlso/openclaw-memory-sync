@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-02-15T04:49:52.804Z",
+  "vault": "/Volumes/MxStore/Project/YearsAlso",
+  "pluginsCount": 35,
+  "openclawPlugin": {
+    "installed": true,
+    "files": [
+      {
+        "name": "manifest.json",
+        "exists": true
+      },
+      {
+        "name": "main.js",
+        "exists": true
+      },
+      {
+        "name": "styles.css",
+        "exists": true
+      },
+      {
+        "name": "data.json",
+        "exists": true
+      }
+    ]
+  },
+  "communityPlugins": {
+    "fileExists": true,
+    "openclawInList": true
+  }
+}

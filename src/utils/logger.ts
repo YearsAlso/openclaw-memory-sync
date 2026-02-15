@@ -212,6 +212,53 @@ export class Logger {
 		}
 	}
 
+	/**
+	 * 性能监控：记录方法执行时间
+	 * @param method 要监控的方法
+	 * @param methodName 方法名称（用于日志）
+	 * @returns 包装后的方法
+	 */
+	static monitorPerformance<T extends (...args: any[]) => any>(
+		method: T,
+		methodName: string,
+		logger: Logger
+	): T {
+		return ((...args: Parameters<T>): ReturnType<T> => {
+			const startTime = performance.now();
+			
+			try {
+				const result = method(...args);
+				
+				// 如果是Promise，监控异步执行时间
+				if (result instanceof Promise) {
+					return result.then(asyncResult => {
+						const endTime = performance.now();
+						const duration = endTime - startTime;
+						logger.debug(`Method ${methodName} completed in ${duration.toFixed(2)}ms`, 'performance');
+						return asyncResult;
+					}).catch(error => {
+						const endTime = performance.now();
+						const duration = endTime - startTime;
+						logger.error(`Method ${methodName} failed after ${duration.toFixed(2)}ms: ${this.formatError(error)}`, 'performance');
+						throw error;
+					}) as ReturnType<T>;
+				}
+				
+				// 同步方法
+				const endTime = performance.now();
+				const duration = endTime - startTime;
+				logger.debug(`Method ${methodName} completed in ${duration.toFixed(2)}ms`, 'performance');
+				return result;
+				
+			} catch (error) {
+				const endTime = performance.now();
+				const duration = endTime - startTime;
+				logger.error(`Method ${methodName} failed after ${duration.toFixed(2)}ms: ${this.formatError(error)}`, 'performance');
+				throw error;
+			}
+		}) as T;
+	}
+
 	static createContextLogger(source: string, settings: OpenClawMemorySyncSettings): Logger {
 		const logger = new Logger(settings);
 		

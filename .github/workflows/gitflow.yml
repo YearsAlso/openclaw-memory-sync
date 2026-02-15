@@ -1,0 +1,175 @@
+name: GitFlow Automation
+
+on:
+  pull_request:
+    types: [closed]
+  push:
+    branches:
+      - 'feature/*'
+      - 'hotfix/*'
+      - 'release/*'
+
+jobs:
+  cleanup-branches:
+    name: Cleanup Merged Branches
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Delete merged feature branch
+      if: startsWith(github.event.pull_request.head.ref, 'feature/')
+      run: |
+        echo "Deleting merged feature branch: ${{ github.event.pull_request.head.ref }}"
+        git push origin --delete ${{ github.event.pull_request.head.ref }}
+    
+    - name: Delete merged hotfix branch
+      if: startsWith(github.event.pull_request.head.ref, 'hotfix/')
+      run: |
+        echo "Deleting merged hotfix branch: ${{ github.event.pull_request.head.ref }}"
+        git push origin --delete ${{ github.event.pull_request.head.ref }}
+    
+    - name: Delete merged release branch
+      if: startsWith(github.event.pull_request.head.ref, 'release/')
+      run: |
+        echo "Deleting merged release branch: ${{ github.event.pull_request.head.ref }}"
+        git push origin --delete ${{ github.event.pull_request.head.ref }}
+
+  validate-branch-names:
+    name: Validate Branch Names
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    
+    steps:
+    - name: Validate branch naming convention
+      run: |
+        BRANCH_NAME="${{ github.ref_name }}"
+        
+        echo "Validating branch name: $BRANCH_NAME"
+        
+        # 允许的分支模式
+        ALLOWED_PATTERNS=(
+          "^main$"
+          "^develop$"
+          "^feature/[a-z0-9-]+$"
+          "^hotfix/[a-z0-9-]+$"
+          "^release/v[0-9]+\.[0-9]+\.[0-9]+$"
+          "^release/v[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+$"
+        )
+        
+        # 检查是否符合任一模式
+        valid=false
+        for pattern in "${ALLOWED_PATTERNS[@]}"; do
+          if [[ "$BRANCH_NAME" =~ $pattern ]]; then
+            valid=true
+            echo "✅ Branch name matches pattern: $pattern"
+            break
+          fi
+        done
+        
+        if [ "$valid" = false ]; then
+          echo "❌ Invalid branch name: $BRANCH_NAME"
+          echo ""
+          echo "Allowed branch naming conventions:"
+          echo "  - main                    # Production branch"
+          echo "  - develop                 # Development branch"
+          echo "  - feature/feature-name    # Feature branches (lowercase, hyphens)"
+          echo "  - hotfix/bug-description  # Hotfix branches"
+          echo "  - release/v1.0.0          # Release branches"
+          echo "  - release/v1.0.0-rc.1     # Release candidate branches"
+          exit 1
+        fi
+
+  sync-main-to-develop:
+    name: Sync Main to Develop
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Configure Git
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+    
+    - name: Merge main into develop
+      run: |
+        echo "Merging main into develop..."
+        
+        # 切换到 develop 分支
+        git checkout develop
+        git pull origin develop
+        
+        # 合并 main 到 develop
+        git merge --no-ff main -m "chore: sync main into develop"
+        
+        # 推送更新
+        git push origin develop
+        
+        echo "✅ Successfully merged main into develop"
+
+  create-release-tag:
+    name: Create Release Tag
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' &&
+      startsWith(github.ref, 'refs/heads/release/')
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Extract version from branch name
+      id: extract_version
+      run: |
+        BRANCH_NAME="${{ github.ref_name }}"
+        
+        # 从 release/v1.0.0 提取版本号
+        if [[ "$BRANCH_NAME" =~ ^release/v([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+          VERSION="${BASH_REMATCH[1]}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag_name=v$VERSION" >> $GITHUB_OUTPUT
+          echo "✅ Extracted version: $VERSION"
+        else
+          echo "❌ Could not extract version from branch name: $BRANCH_NAME"
+          exit 1
+        fi
+    
+    - name: Validate version in manifest
+      run: |
+        VERSION="${{ steps.extract_version.outputs.version }}"
+        MANIFEST_VERSION=$(jq -r '.version' manifest.json)
+        
+        echo "Branch version: $VERSION"
+        echo "Manifest version: $MANIFEST_VERSION"
+        
+        if [ "$VERSION" != "$MANIFEST_VERSION" ]; then
+          echo "❌ Version mismatch! Please update manifest.json to version $VERSION"
+          exit 1
+        fi
+        
+        echo "✅ Version validation passed"
+    
+    - name: Create GitHub Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.extract_version.outputs.tag_name }}
+        release_name: Release ${{ steps.extract_version.outputs.tag_name }}
+        draft: false
+        prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}

@@ -55,11 +55,6 @@ export default class OpenClawMemorySync extends Plugin {
 
     this.registerView(SYNC_STATUS_VIEW_TYPE, leaf => new SyncStatusView(leaf, this.syncEngine));
 
-    // 注册视图类型
-    // this.registerView(MEMORY_VIEW_TYPE, leaf => new MemoryView(leaf, this.apiClient));
-    //
-    // this.registerView(SYNC_STATUS_VIEW_TYPE, leaf => new SyncStatusView(leaf, this.syncEngine));
-
     // 添加设置标签页
     this.addSettingTab(new OpenClawMemorySyncSettingTab(this.app, this));
 

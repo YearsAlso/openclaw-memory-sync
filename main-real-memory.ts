@@ -230,8 +230,23 @@ export default class OpenClawMemorySyncReal extends Plugin {
       const workspacePath = this.settings.openclawWorkspacePath;
       const targetFolder = this.settings.targetFolder;
       
-      // 1. 同步 MEMORY.md
-      await this.syncMemoryFile(workspacePath, 'MEMORY.md', targetFolder);
+      console.log(`开始同步，工作空间: ${workspacePath}`);
+      console.log(`目标文件夹: ${targetFolder}`);
+      
+      let syncedCount = 0;
+      let errorCount = 0;
+      
+      // 1. 同步 MEMORY.md (如果存在)
+      const memoryMdPath = path.join(workspacePath, 'MEMORY.md');
+      if (fs.existsSync(memoryMdPath)) {
+        console.log(`找到 MEMORY.md: ${memoryMdPath}`);
+        const success = await this.syncMemoryFile(workspacePath, 'MEMORY.md', targetFolder);
+        if (success) syncedCount++;
+        else errorCount++;
+      } else {
+        console.log(`MEMORY.md 不存在: ${memoryMdPath}`);
+        console.log('跳过 MEMORY.md 同步');
+      }
       
       // 2. 同步 memory 文件夹中的文件
       const memoryPath = path.join(workspacePath, 'memory');
@@ -242,15 +257,39 @@ export default class OpenClawMemorySyncReal extends Plugin {
           .reverse()
           .slice(0, 30); // 只同步最近30个文件
         
-        console.log(`同步 ${memoryFiles.length} 个记忆文件`);
+        console.log(`找到 ${memoryFiles.length} 个记忆文件`);
+        console.log('文件列表:', memoryFiles);
         
         for (const file of memoryFiles) {
-          await this.syncMemoryFile(memoryPath, file, `${targetFolder}/memory`);
+          const success = await this.syncMemoryFile(memoryPath, file, `${targetFolder}/memory`);
+          if (success) syncedCount++;
+          else errorCount++;
+        }
+      } else {
+        console.log(`memory 文件夹不存在: ${memoryPath}`);
+      }
+      
+      // 3. 同步其他可能的记忆文件
+      // 查找工作空间中的所有 .md 文件（排除一些特定文件）
+      const allMdFiles = fs.readdirSync(workspacePath)
+        .filter(f => f.endsWith('.md'))
+        .filter(f => !f.includes('node_modules'))
+        .filter(f => !f.includes('.obsidian'))
+        .filter(f => f !== 'MEMORY.md'); // 已经处理过了
+        
+      console.log(`找到 ${allMdFiles.length} 个其他 .md 文件`);
+      
+      for (const file of allMdFiles) {
+        // 跳过已经在 memory 文件夹中处理过的文件
+        if (!file.startsWith('memory/')) {
+          const success = await this.syncMemoryFile(workspacePath, file, targetFolder);
+          if (success) syncedCount++;
+          else errorCount++;
         }
       }
       
-      console.log('✅ 真实记忆同步完成');
-      new Notice('✅ OpenClaw 真实记忆同步完成');
+      console.log(`✅ 真实记忆同步完成: 成功 ${syncedCount} 个，错误 ${errorCount} 个`);
+      new Notice(`✅ OpenClaw 真实记忆同步完成: ${syncedCount} 个文件${errorCount > 0 ? ` (${errorCount} 个错误)` : ''}`);
       
     } catch (error) {
       console.error('❌ 同步真实记忆错误:', error);
@@ -264,6 +303,24 @@ export default class OpenClawMemorySyncReal extends Plugin {
       const targetPath = `${targetFolder}/${fileName}`;
       
       console.log(`同步文件: ${sourcePath} -> ${targetPath}`);
+      
+      // 检查源文件是否存在
+      if (!fs.existsSync(sourcePath)) {
+        console.warn(`⚠️ 源文件不存在: ${sourcePath}`);
+        
+        // 检查目标文件是否已存在
+        const vault = this.app.vault;
+        const existingFile = vault.getAbstractFileByPath(targetPath);
+        if (existingFile) {
+          console.log(`📝 源文件不存在，但目标文件已存在: ${fileName}`);
+          // 可以选择删除目标文件或保留
+          // 这里我们保留目标文件，只记录警告
+          return true;
+        } else {
+          console.log(`📝 源文件和目标文件都不存在: ${fileName}`);
+          return true; // 什么都不做
+        }
+      }
       
       // 读取源文件内容
       const content = fs.readFileSync(sourcePath, 'utf8');
@@ -303,6 +360,7 @@ export default class OpenClawMemorySyncReal extends Plugin {
       
     } catch (error) {
       console.error(`❌ 同步文件 ${fileName} 错误:`, error);
+      console.error(`错误详情:`, error.message);
       return false;
     }
   }

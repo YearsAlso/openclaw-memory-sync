@@ -1,0 +1,110 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # 每周一早上运行
+    - cron: '0 0 * * 1'
+
+jobs:
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: TypeScript compilation check
+      run: npx tsc --noEmit --skipLibCheck
+    
+    - name: ESLint analysis
+      run: npm run lint
+    
+    - name: Prettier format check
+      run: npx prettier --check "src/**/*.ts" "*.json" "*.md" "*.yml" "*.yaml"
+    
+    - name: Security audit
+      run: npm audit --audit-level=moderate || true
+    
+    - name: Check for outdated dependencies
+      run: npx npm-check-updates --format group || true
+    
+    - name: Code complexity analysis
+      run: |
+        # 安装复杂度分析工具
+        npm install -g complexity-report
+        
+        # 分析TypeScript文件复杂度
+        if command -v cr &> /dev/null; then
+          echo "=== Code Complexity Report ==="
+          cr src/**/*.ts --format markdown || true
+        else
+          echo "complexity-report not available, skipping..."
+        fi
+    
+    - name: Check file sizes
+      run: |
+        echo "=== File Size Check ==="
+        echo "Main plugin file:"
+        wc -l main.ts || echo "main.ts not found"
+        echo ""
+        echo "Compiled JavaScript:"
+        wc -l main.js || echo "main.js not found"
+        echo ""
+        echo "Styles:"
+        wc -l styles.css || echo "styles.css not found"
+    
+    - name: Validate manifest.json
+      run: |
+        echo "=== Manifest Validation ==="
+        
+        # 检查必需字段
+        REQUIRED_FIELDS=("id" "name" "version" "minAppVersion" "description" "author")
+        for field in "${REQUIRED_FIELDS[@]}"; do
+          VALUE=$(jq -r ".$field" manifest.json)
+          if [ "$VALUE" = "null" ] || [ -z "$VALUE" ]; then
+            echo "❌ Missing required field: $field"
+            exit 1
+          fi
+          echo "✅ $field: $VALUE"
+        done
+        
+        # 检查版本格式
+        VERSION=$(jq -r '.version' manifest.json)
+        if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "❌ Invalid version format: $VERSION"
+          exit 1
+        fi
+        
+        echo "✅ Manifest validation passed"
+    
+    - name: Generate code quality report
+      if: always()
+      run: |
+        echo "=== Code Quality Report ==="
+        echo "Generated: $(date)"
+        echo "Repository: $GITHUB_REPOSITORY"
+        echo "Branch: ${GITHUB_REF#refs/heads/}"
+        echo ""
+        echo "## Summary"
+        echo "- TypeScript: $(npx tsc --noEmit --skipLibCheck 2>&1 | grep -c 'error' || echo '0') errors"
+        echo "- ESLint: $(npm run lint 2>&1 | grep -c 'error' || echo '0') errors"
+        echo "- Prettier: $(npx prettier --check 'src/**/*.ts' 2>&1 | grep -c 'error' || echo '0') formatting issues"
+        echo ""
+        echo "## Recommendations"
+        echo "1. Run 'npm run lint -- --fix' to fix ESLint issues"
+        echo "2. Run 'npx prettier --write' to fix formatting"
+        echo "3. Update dependencies with 'npx npm-check-updates -u'"

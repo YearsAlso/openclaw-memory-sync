@@ -1,4 +1,14 @@
-import { OpenClawMemorySyncSettings } from '../main';
+export interface OpenClawMemorySyncSettings {
+	apiUrl: string;
+	apiPort: number;
+	syncInterval: number;
+	autoSync: boolean;
+	conflictStrategy: 'timestamp' | 'local' | 'remote' | 'ask';
+	excludePatterns: string[];
+	enableWebSocket: boolean;
+	logLevel: 'debug' | 'info' | 'warn' | 'error';
+	targetFolder: string;
+}
 
 export enum LogLevel {
 	DEBUG = 'debug',
@@ -164,7 +174,7 @@ export class Logger {
 		};
 
 		for (const log of this.logs) {
-			stats.byLevel[log.level]++;
+			(stats.byLevel as any)[log.level]++;
 
 			if (log.source) {
 				stats.bySource[log.source] = (stats.bySource[log.source] || 0) + 1;

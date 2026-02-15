@@ -1,5 +1,5 @@
 import { App, ItemView, WorkspaceLeaf, TFile, TFolder, Notice } from 'obsidian';
-import { OpenClawAPIClient, MemoryFile } from '../api-client';
+import { OpenClawAPIClient, MemoryFile } from '../../api-client';
 
 export const MEMORY_VIEW_TYPE = 'openclaw-memory-view';
 
@@ -12,9 +12,10 @@ export class MemoryView extends ItemView {
 	private sortOrder: 'asc' | 'desc' = 'desc';
 	private isLoading: boolean = false;
 	private lastRefresh: Date | null = null;
+	private statusEl: HTMLElement;
 
-	constructor(app: App, apiClient: OpenClawAPIClient) {
-		super(app);
+	constructor(leaf: WorkspaceLeaf, apiClient: OpenClawAPIClient) {
+		super(leaf);
 		this.apiClient = apiClient;
 	}
 
@@ -368,8 +369,8 @@ export class MemoryView extends ItemView {
 		}
 	}
 
-	open(): void {
-		const leaf = this.app.workspace.getLeaf(true);
+	static open(app: App, apiClient: OpenClawAPIClient): void {
+		const leaf = app.workspace.getLeaf(true);
 		leaf.setViewState({
 			type: MEMORY_VIEW_TYPE,
 			active: true

@@ -1,6 +1,17 @@
 import { App, TFile, TFolder, normalizePath } from 'obsidian';
 import { OpenClawAPIClient, MemoryFile, FileContent } from './api-client';
-import { OpenClawMemorySyncSettings } from './main';
+
+export interface OpenClawMemorySyncSettings {
+	apiUrl: string;
+	apiPort: number;
+	syncInterval: number;
+	autoSync: boolean;
+	conflictStrategy: 'timestamp' | 'local' | 'remote' | 'ask';
+	excludePatterns: string[];
+	enableWebSocket: boolean;
+	logLevel: 'debug' | 'info' | 'warn' | 'error';
+	targetFolder: string;
+}
 
 export enum SyncState {
 	IDLE = 'idle',
@@ -137,18 +148,15 @@ export class SyncEngine {
 						continue;
 					}
 					
-					const stats = this.app.vault.getFileStats(child);
-					if (stats) {
-						files.push({
-							name: child.name,
-							path: child.path,
-							size: child.stat.size,
-							created: new Date(stats.ctime),
-							modified: new Date(stats.mtime),
-							lines: this.app.vault.read(child).then(content => content.split('\n').length).catch(() => 0),
-							preview: ''
-						});
-					}
+					files.push({
+						name: child.name,
+						path: child.path,
+						size: child.stat.size,
+						created: new Date(child.stat.ctime),
+						modified: new Date(child.stat.mtime),
+						lines: this.app.vault.read(child).then(content => content.split('\n').length).catch(() => 0),
+						preview: ''
+					});
 				} else if (child instanceof TFolder) {
 					walkFolder(child);
 				}
@@ -159,9 +167,7 @@ export class SyncEngine {
 		
 		// 等待所有行数计算完成
 		for (const file of files) {
-			if (typeof file.lines === 'object') {
-				file.lines = await file.lines;
-			}
+			file.lines = await file.lines;
 		}
 		
 		return files;
@@ -305,9 +311,8 @@ export class SyncEngine {
 			const localFile = this.app.vault.getAbstractFileByPath(localPath);
 			
 			if (localFile instanceof TFile) {
-				const localStats = this.app.vault.getFileStats(localFile);
 				const remoteTime = remoteFile.stats.modified.getTime();
-				const localTime = localStats ? new Date(localStats.mtime).getTime() : 0;
+				const localTime = localFile.stat.mtime;
 				
 				if (remoteTime > localTime) {
 					// 远程版本更新，下载远程版本

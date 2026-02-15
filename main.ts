@@ -3,7 +3,7 @@ import { OpenClawAPIClient } from './api-client';
 import { SyncEngine, SyncStatus } from './sync-engine';
 import { MemoryView, MEMORY_VIEW_TYPE } from './src/views/memory-view';
 import { SyncStatusView, SYNC_STATUS_VIEW_TYPE } from './src/views/sync-status';
-import { getLogger, setGlobalLogger, Logger } from './src/utils/logger';
+import { Logger } from './src/utils/logger';
 
 interface OpenClawMemorySyncSettings {
 	apiUrl: string;
@@ -33,8 +33,6 @@ export default class OpenClawMemorySync extends Plugin {
 	settings: OpenClawMemorySyncSettings;
 	apiClient: OpenClawAPIClient;
 	syncEngine: SyncEngine;
-	memoryView: MemoryView;
-	syncStatusView: SyncStatusView;
 	syncIntervalId: number;
 	logger: Logger;
 
@@ -42,12 +40,7 @@ export default class OpenClawMemorySync extends Plugin {
 		await this.loadSettings();
 
 		// 初始化日志系统
-		this.logger = new Logger({
-			level: this.settings.logLevel,
-			enableConsole: true,
-			enableFile: false
-		});
-		setGlobalLogger(this.logger);
+		this.logger = new Logger(this.settings);
 		
 		this.logger.info('OpenClaw Memory Sync插件开始加载', 'plugin');
 
@@ -60,17 +53,24 @@ export default class OpenClawMemorySync extends Plugin {
 		// 注册视图
 		this.registerView(
 			MEMORY_VIEW_TYPE,
-			(leaf) => new MemoryView(this.app, this.apiClient)
+			(leaf) => new MemoryView(leaf, this.apiClient)
 		);
 		
 		this.registerView(
 			SYNC_STATUS_VIEW_TYPE,
-			(leaf) => new SyncStatusView(this.app, this.syncEngine)
+			(leaf) => new SyncStatusView(leaf, this.syncEngine)
 		);
 		
-		// 初始化视图实例
-		this.memoryView = new MemoryView(this.app, this.apiClient);
-		this.syncStatusView = new SyncStatusView(this.app, this.syncEngine);
+		// 注册视图类型
+		this.registerView(
+			MEMORY_VIEW_TYPE,
+			(leaf) => new MemoryView(leaf, this.apiClient)
+		);
+		
+		this.registerView(
+			SYNC_STATUS_VIEW_TYPE,
+			(leaf) => new SyncStatusView(leaf, this.syncEngine)
+		);
 
 		// 添加设置标签页
 		this.addSettingTab(new OpenClawMemorySyncSettingTab(this.app, this));
@@ -85,18 +85,18 @@ export default class OpenClawMemorySync extends Plugin {
 		this.addCommand({
 			id: 'openclaw-view-memory',
 			name: '查看记忆库',
-			callback: () => this.memoryView.open()
+			callback: () => MemoryView.open(this.app, this.apiClient)
 		});
 
 		this.addCommand({
 			id: 'openclaw-view-status',
 			name: '查看同步状态',
-			callback: () => this.syncStatusView.open()
+			callback: () => SyncStatusView.open(this.app, this.syncEngine)
 		});
 
 		// 添加侧边栏图标
 		this.addRibbonIcon('brain', 'OpenClaw记忆同步', () => {
-			this.syncStatusView.open();
+			SyncStatusView.open(this.app, this.syncEngine);
 		});
 
 		// 添加状态栏项目

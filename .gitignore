@@ -10,6 +10,9 @@ build/
 *.swo
 *~
 
+# Husky
+.husky/_
+
 # OS
 .DS_Store
 Thumbs.db
@@ -36,9 +39,7 @@ coverage/
 
 # Build artifacts
 *.tsbuildinfo
-main.js
 main.js.map
-styles.css
 styles.css.map
 
 # Temporary files

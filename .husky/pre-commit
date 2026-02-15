@@ -1,0 +1,39 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "🔍 Running pre-commit checks..."
+
+# 运行代码格式化检查
+echo "📝 Checking code formatting..."
+npm run lint -- --quiet
+
+if [ $? -ne 0 ]; then
+  echo "❌ ESLint found issues. Run 'npm run lint -- --fix' to fix them."
+  exit 1
+fi
+
+echo "✅ Code formatting check passed"
+
+# 运行TypeScript类型检查
+echo "🔧 Checking TypeScript types..."
+npx tsc --noEmit --skipLibCheck
+
+if [ $? -ne 0 ]; then
+  echo "❌ TypeScript compilation failed"
+  exit 1
+fi
+
+echo "✅ TypeScript check passed"
+
+# 构建插件
+echo "🏗️ Building plugin..."
+npm run build
+
+if [ $? -ne 0 ]; then
+  echo "❌ Build failed"
+  exit 1
+fi
+
+echo "✅ Build successful"
+
+echo "🎉 All pre-commit checks passed!"

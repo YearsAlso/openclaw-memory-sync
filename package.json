@@ -13,7 +13,9 @@
     "clean": "rm -rf dist main.js styles.css",
     "prepublish": "npm run build",
     "start": "npm run dev",
-    "watch": "npm run dev -- --watch"
+    "watch": "npm run dev -- --watch",
+    "validate": "node scripts/validate-workflows.js",
+    "ci": "npm run lint && npm run build && npm run validate"
   },
   "keywords": [
     "obsidian",

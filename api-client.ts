@@ -1,5 +1,16 @@
 import { Notice } from 'obsidian';
-import { OpenClawMemorySyncSettings } from './main';
+
+export interface OpenClawMemorySyncSettings {
+	apiUrl: string;
+	apiPort: number;
+	syncInterval: number;
+	autoSync: boolean;
+	conflictStrategy: 'timestamp' | 'local' | 'remote' | 'ask';
+	excludePatterns: string[];
+	enableWebSocket: boolean;
+	logLevel: 'debug' | 'info' | 'warn' | 'error';
+	targetFolder: string;
+}
 
 export interface MemoryFile {
 	name: string;
@@ -7,7 +18,7 @@ export interface MemoryFile {
 	size: number;
 	created: Date;
 	modified: Date;
-	lines: number;
+	lines: number | Promise<number>;
 	preview: string;
 }
 
@@ -248,7 +259,7 @@ export class OpenClawAPIClient {
 	private handleWebSocketMessage(message: WebSocketMessage): void {
 		switch (message.type) {
 			case 'welcome':
-				console.log('WebSocket欢迎消息:', message.message);
+				console.log('WebSocket欢迎消息:', message.data?.message || 'Connected');
 				break;
 				
 			case 'notification':

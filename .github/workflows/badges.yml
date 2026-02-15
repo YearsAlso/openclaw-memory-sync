@@ -1,0 +1,104 @@
+name: Update Badges
+
+on:
+  workflow_run:
+    workflows: ["CI/CD Pipeline", "Code Quality"]
+    types:
+      - completed
+  schedule:
+    # 每天更新一次
+    - cron: '0 0 * * *'
+
+jobs:
+  update-badges:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure' }}
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Generate badges
+      run: |
+        echo "=== Generating GitHub Actions badges ==="
+        
+        REPO_NAME="${{ github.repository }}"
+        
+        # CI/CD Pipeline badge
+        CI_BADGE="[![CI/CD Pipeline](https://github.com/${REPO_NAME}/workflows/CI/CD%20Pipeline/badge.svg)](https://github.com/${REPO_NAME}/actions/workflows/ci.yml)"
+        
+        # Code Quality badge
+        QUALITY_BADGE="[![Code Quality](https://github.com/${REPO_NAME}/workflows/Code%20Quality/badge.svg)](https://github.com/${REPO_NAME}/actions/workflows/code-quality.yml)"
+        
+        # Release badge
+        RELEASE_BADGE="[![Release](https://github.com/${REPO_NAME}/workflows/Release%20to%20Obsidian%20Plugin%20Marketplace/badge.svg)](https://github.com/${REPO_NAME}/actions/workflows/release.yml)"
+        
+        # 创建 badges.md 文件
+        cat > BADGES.md << EOF
+        # GitHub Actions Status
+        
+        ## Workflow Status
+        
+        ${CI_BADGE} - CI/CD Pipeline
+        ${QUALITY_BADGE} - Code Quality Checks  
+        ${RELEASE_BADGE} - Obsidian Plugin Release
+        
+        ## Latest Release
+        ![GitHub Release](https://img.shields.io/github/v/release/${REPO_NAME})
+        ![GitHub Downloads](https://img.shields.io/github/downloads/${REPO_NAME}/total)
+        
+        ## Code Metrics
+        ![GitHub last commit](https://img.shields.io/github/last-commit/${REPO_NAME})
+        ![GitHub issues](https://img.shields.io/github/issues/${REPO_NAME})
+        ![GitLicense](https://img.shields.io/github/license/${REPO_NAME})
+        
+        ## Obsidian Plugin
+        ![Obsidian Plugin](https://img.shields.io/badge/Obsidian-Plugin-7C3AED)
+        ![Obsidian Downloads](https://img.shields.io/badge/Downloads-0-blue)
+        EOF
+        
+        echo "✅ Badges generated in BADGES.md"
+    
+    - name: Update README with badges
+      run: |
+        echo "=== Updating README.md ==="
+        
+        # 备份原始README
+        cp README.md README.md.backup
+        
+        # 读取BADGES.md内容
+        BADGES_CONTENT=$(cat BADGES.md)
+        
+        # 更新README.md，在标题后插入徽章
+        awk -v badges="$BADGES_CONTENT" '
+        /^# OpenClaw Memory Sync - Obsidian Plugin/ {
+          print $0
+          print ""
+          print badges
+          print ""
+          next
+        }
+        { print }
+        ' README.md.backup > README.md
+        
+        echo "✅ README.md updated with badges"
+        
+        # 检查差异
+        echo "=== Changes made ==="
+        diff -u README.md.backup README.md | head -50 || true
+    
+    - name: Commit updated README
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        
+        git add README.md
+        if git diff --cached --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "docs: update README with GitHub Actions badges"
+          git push
+          echo "✅ README updated and committed"
+        fi

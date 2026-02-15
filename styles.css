@@ -1,0 +1,646 @@
+/* OpenClaw Memory Sync 插件样式 */
+
+/* 记忆库视图样式 */
+.openclaw-memory-view {
+	padding: 20px;
+}
+
+.openclaw-memory-header {
+	margin-bottom: 20px;
+}
+
+.openclaw-memory-header h2 {
+	margin: 0;
+	color: var(--text-normal);
+}
+
+.openclaw-memory-controls {
+	display: flex;
+	gap: 10px;
+	margin-bottom: 20px;
+	flex-wrap: wrap;
+	align-items: center;
+}
+
+.search-container {
+	flex: 1;
+	min-width: 200px;
+}
+
+.search-input {
+	width: 100%;
+	padding: 8px 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background-color: var(--background-primary);
+	color: var(--text-normal);
+	font-size: 14px;
+}
+
+.search-input:focus {
+	outline: none;
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 2px var(--background-modifier-border-hover);
+}
+
+.sort-container {
+	display: flex;
+	gap: 5px;
+	align-items: center;
+}
+
+.sort-select {
+	padding: 8px 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background-color: var(--background-primary);
+	color: var(--text-normal);
+	font-size: 14px;
+}
+
+.sort-order-button {
+	padding: 8px 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background-color: var(--background-primary);
+	color: var(--text-normal);
+	font-size: 14px;
+	cursor: pointer;
+}
+
+.sort-order-button:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.refresh-button {
+	padding: 8px 16px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background-color: var(--interactive-normal);
+	color: var(--text-normal);
+	font-size: 14px;
+	cursor: pointer;
+}
+
+.refresh-button:hover {
+	background-color: var(--interactive-hover);
+}
+
+.file-list-container {
+	margin-top: 20px;
+}
+
+.file-list {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.file-item {
+	padding: 15px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background-color: var(--background-primary);
+	transition: all 0.2s ease;
+}
+
+.file-item:hover {
+	border-color: var(--interactive-accent);
+	background-color: var(--background-modifier-hover);
+	transform: translateY(-1px);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.file-header {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-bottom: 10px;
+}
+
+.file-icon {
+	font-size: 18px;
+}
+
+.file-name {
+	font-weight: 600;
+	color: var(--text-normal);
+	cursor: pointer;
+	text-decoration: none;
+}
+
+.file-name:hover {
+	color: var(--interactive-accent);
+	text-decoration: underline;
+}
+
+.file-info {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 15px;
+	margin-bottom: 10px;
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+.file-path {
+	flex: 1;
+	min-width: 200px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.file-size,
+.file-lines,
+.file-modified {
+	flex-shrink: 0;
+}
+
+.file-actions {
+	display: flex;
+	gap: 8px;
+}
+
+.file-actions button {
+	padding: 6px 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background-color: var(--interactive-normal);
+	color: var(--text-normal);
+	font-size: 12px;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.file-actions button:hover {
+	background-color: var(--interactive-hover);
+	transform: translateY(-1px);
+}
+
+.preview-button:hover {
+	background-color: var(--color-blue);
+	color: white;
+}
+
+.download-button:hover {
+	background-color: var(--color-green);
+	color: white;
+}
+
+.delete-button:hover {
+	background-color: var(--color-red);
+	color: white;
+}
+
+.no-results {
+	text-align: center;
+	padding: 40px;
+	color: var(--text-muted);
+	font-size: 16px;
+}
+
+.status-bar {
+	margin-top: 20px;
+	padding-top: 15px;
+	border-top: 1px solid var(--background-modifier-border);
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+.status-text {
+	font-weight: 500;
+}
+
+.status-info {
+	color: var(--text-normal);
+}
+
+.status-error {
+	color: var(--color-red);
+}
+
+.last-refresh {
+	margin-left: 10px;
+	color: var(--text-faint);
+}
+
+/* 同步状态视图样式 */
+.openclaw-sync-status-view {
+	padding: 20px;
+}
+
+.sync-status-header {
+	margin-bottom: 20px;
+}
+
+.sync-status-header h2 {
+	margin: 0;
+	color: var(--text-normal);
+}
+
+.sync-controls {
+	display: flex;
+	gap: 10px;
+	margin-bottom: 20px;
+	flex-wrap: wrap;
+	align-items: center;
+}
+
+.sync-now-button,
+.pause-resume-button,
+.refresh-button {
+	padding: 8px 16px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background-color: var(--interactive-normal);
+	color: var(--text-normal);
+	font-size: 14px;
+	cursor: pointer;
+	transition: all 0.2s ease;
+}
+
+.sync-now-button:hover,
+.pause-resume-button:hover,
+.refresh-button:hover {
+	background-color: var(--interactive-hover);
+	transform: translateY(-1px);
+}
+
+.sync-now-button {
+	background-color: var(--interactive-accent);
+	color: white;
+}
+
+.sync-now-button:hover {
+	background-color: var(--interactive-accent-hover);
+}
+
+.auto-refresh-container {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.auto-refresh-checkbox {
+	margin: 0;
+}
+
+.sync-status-content {
+	margin-top: 20px;
+}
+
+.status-card {
+	padding: 20px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background-color: var(--background-primary);
+	margin-bottom: 20px;
+}
+
+.status-header {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-bottom: 15px;
+}
+
+.status-icon {
+	font-size: 24px;
+}
+
+.status-text {
+	font-size: 18px;
+	font-weight: 600;
+}
+
+.status-idle {
+	color: var(--color-green);
+}
+
+.status-syncing {
+	color: var(--color-blue);
+}
+
+.status-conflict {
+	color: var(--color-orange);
+}
+
+.status-error {
+	color: var(--color-red);
+}
+
+.status-paused {
+	color: var(--color-yellow);
+}
+
+.progress-container {
+	margin-bottom: 15px;
+}
+
+.progress-bar {
+	height: 8px;
+	background-color: var(--background-modifier-border);
+	border-radius: 4px;
+	overflow: hidden;
+	margin-bottom: 5px;
+}
+
+.progress-fill {
+	height: 100%;
+	background-color: var(--interactive-accent);
+	border-radius: 4px;
+	transition: width 0.3s ease;
+}
+
+.progress-text {
+	text-align: center;
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+.current-file {
+	margin-bottom: 15px;
+	padding: 10px;
+	background-color: var(--background-modifier-hover);
+	border-radius: 4px;
+	font-size: 14px;
+}
+
+.stats {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 15px;
+	margin-top: 15px;
+}
+
+.stat-item {
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+.errors-section,
+.history-section,
+.performance-section {
+	margin-top: 30px;
+}
+
+.errors-section h3,
+.history-section h3,
+.performance-section h3 {
+	margin-bottom: 15px;
+	color: var(--text-normal);
+}
+
+.errors-list {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.error-item {
+	padding: 15px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	background-color: var(--background-primary);
+}
+
+.error-header {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-bottom: 10px;
+}
+
+.error-icon {
+	font-size: 16px;
+	color: var(--color-red);
+}
+
+.error-message {
+	flex: 1;
+	color: var(--text-normal);
+	font-weight: 500;
+}
+
+.error-time {
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+.error-toggle-button {
+	padding: 4px 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background-color: var(--interactive-normal);
+	color: var(--text-normal);
+	font-size: 11px;
+	cursor: pointer;
+}
+
+.error-toggle-button:hover {
+	background-color: var(--interactive-hover);
+}
+
+.error-details {
+	padding: 10px;
+	background-color: var(--background-modifier-hover);
+	border-radius: 4px;
+	font-size: 12px;
+	color: var(--text-muted);
+}
+
+.error-file,
+.error-timestamp,
+.error-retryable {
+	margin-bottom: 5px;
+}
+
+.retry-button {
+	padding: 4px 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background-color: var(--color-green);
+	color: white;
+	font-size: 11px;
+	cursor: pointer;
+	margin-top: 5px;
+}
+
+.retry-button:hover {
+	background-color: var(--color-green-hover);
+}
+
+.clear-errors-button {
+	padding: 8px 16px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background-color: var(--color-red);
+	color: white;
+	font-size: 14px;
+	cursor: pointer;
+	margin-top: 10px;
+}
+
+.clear-errors-button:hover {
+	background-color: var(--color-red-hover);
+}
+
+.history-placeholder,
+.performance-stats {
+	padding: 20px;
+	border: 1px dashed var(--background-modifier-border);
+	border-radius: 6px;
+	background-color: var(--background-modifier-hover);
+	text-align: center;
+	color: var(--text-muted);
+}
+
+.performance-stats {
+	text-align: left;
+}
+
+.performance-item {
+	margin-bottom: 8px;
+	font-size: 14px;
+}
+
+/* 设置面板样式 */
+.openclaw-settings {
+	padding: 20px;
+}
+
+.openclaw-settings h2 {
+	margin-bottom: 20px;
+	color: var(--text-normal);
+}
+
+.openclaw-settings .setting-item {
+	margin-bottom: 20px;
+}
+
+.openclaw-settings .setting-item-control {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.openclaw-settings textarea {
+	width: 100%;
+	min-height: 100px;
+	padding: 8px 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background-color: var(--background-primary);
+	color: var(--text-normal);
+	font-size: 14px;
+	resize: vertical;
+}
+
+.openclaw-settings textarea:focus {
+	outline: none;
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 2px var(--background-modifier-border-hover);
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+	.openclaw-memory-controls,
+	.sync-controls {
+		flex-direction: column;
+		align-items: stretch;
+	}
+	
+	.search-container,
+	.sort-container {
+		width: 100%;
+	}
+	
+	.file-info {
+		flex-direction: column;
+		gap: 5px;
+	}
+	
+	.file-path {
+		min-width: auto;
+	}
+	
+	.file-actions {
+		justify-content: flex-start;
+	}
+	
+	.stats {
+		flex-direction: column;
+		gap: 5px;
+	}
+}
+
+/* 动画效果 */
+@keyframes pulse {
+	0% { opacity: 1; }
+	50% { opacity: 0.5; }
+	100% { opacity: 1; }
+}
+
+.syncing-animation {
+	animation: pulse 1.5s infinite;
+}
+
+/* 工具提示 */
+.tooltip {
+	position: relative;
+	display: inline-block;
+}
+
+.tooltip .tooltip-text {
+	visibility: hidden;
+	width: 200px;
+	background-color: var(--background-primary);
+	color: var(--text-normal);
+	text-align: center;
+	padding: 8px;
+	border-radius: 4px;
+	border: 1px solid var(--background-modifier-border);
+	position: absolute;
+	z-index: 1;
+	bottom: 125%;
+	left: 50%;
+	margin-left: -100px;
+	opacity: 0;
+	transition: opacity 0.3s;
+	font-size: 12px;
+}
+
+.tooltip:hover .tooltip-text {
+	visibility: visible;
+	opacity: 1;
+}
+
+/* 加载动画 */
+.loading-spinner {
+	display: inline-block;
+	width: 16px;
+	height: 16px;
+	border: 2px solid var(--background-modifier-border);
+	border-top: 2px solid var(--interactive-accent);
+	border-radius: 50%;
+	animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+	0% { transform: rotate(0deg); }
+	100% { transform: rotate(360deg); }
+}
+
+.loading-container {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 10px;
+	padding: 40px;
+}
+
+.loading-text {
+	color: var(--text-muted);
+	font-size: 14px;
+}

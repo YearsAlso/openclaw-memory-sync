@@ -1,0 +1,118 @@
+name: Bump Version
+
+on:
+  workflow_dispatch:
+    inputs:
+      version-type:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+        - patch
+        - minor
+        - major
+      create-tag:
+        description: 'Create git tag'
+        required: true
+        default: 'true'
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+    
+    - name: Configure Git
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+    
+    - name: Bump version
+      run: |
+        echo "=== Bumping version (${{ github.event.inputs.version-type }}) ==="
+        
+        # 读取当前版本
+        CURRENT_VERSION=$(jq -r '.version' manifest.json)
+        echo "Current version: $CURRENT_VERSION"
+        
+        # 解析版本号
+        IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+        
+        # 根据输入增加版本号
+        case "${{ github.event.inputs.version-type }}" in
+          major)
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+            ;;
+          minor)
+            MINOR=$((MINOR + 1))
+            PATCH=0
+            ;;
+          patch)
+            PATCH=$((PATCH + 1))
+            ;;
+        esac
+        
+        NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+        echo "New version: $NEW_VERSION"
+        
+        # 更新manifest.json
+        jq --arg version "$NEW_VERSION" '.version = $version' manifest.json > manifest.json.tmp
+        mv manifest.json.tmp manifest.json
+        
+        # 更新package.json
+        if [ -f package.json ]; then
+          jq --arg version "$NEW_VERSION" '.version = $version' package.json > package.json.tmp
+          mv package.json.tmp package.json
+        fi
+        
+        echo "✅ Version bumped to $NEW_VERSION"
+    
+    - name: Build plugin
+      run: |
+        npm ci
+        npm run build
+    
+    - name: Commit changes
+      run: |
+        git add manifest.json package.json main.js
+        git commit -m "chore: bump version to $NEW_VERSION"
+        git push origin HEAD
+        
+        echo "✅ Changes committed"
+    
+    - name: Create git tag
+      if: ${{ github.event.inputs.create-tag == 'true' }}
+      run: |
+        NEW_VERSION=$(jq -r '.version' manifest.json)
+        TAG_NAME="v$NEW_VERSION"
+        
+        git tag "$TAG_NAME"
+        git push origin "$TAG_NAME"
+        
+        echo "✅ Git tag created: $TAG_NAME"
+    
+    - name: Create GitHub Release
+      if: ${{ github.event.inputs.create-tag == 'true' }}
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v$NEW_VERSION
+        generate_release_notes: true
+        prerelease: false

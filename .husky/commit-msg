@@ -1,0 +1,50 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+echo "📝 Validating commit message..."
+
+# 读取提交信息
+COMMIT_MSG_FILE="$1"
+COMMIT_MSG=$(cat "$COMMIT_MSG_FILE")
+
+# Conventional Commits 正则表达式
+# 格式: type(scope): description
+CONVENTIONAL_REGEX='^(feat|fix|docs|style|refactor|test|chore|build|ci|perf)(\([a-zA-Z0-9\-]+\))?: .{1,50}'
+
+# 检查提交信息长度
+if [ ${#COMMIT_MSG} -gt 100 ]; then
+  echo "❌ Commit message is too long (max 100 characters)"
+  echo "Current length: ${#COMMIT_MSG}"
+  exit 1
+fi
+
+# 检查是否符合 Conventional Commits 规范
+if ! echo "$COMMIT_MSG" | grep -qE "$CONVENTIONAL_REGEX"; then
+  echo "❌ Commit message does not follow Conventional Commits format"
+  echo ""
+  echo "Expected format: type(scope): description"
+  echo ""
+  echo "Types:"
+  echo "  feat     - New feature"
+  echo "  fix      - Bug fix"
+  echo "  docs     - Documentation"
+  echo "  style    - Code style/formatting"
+  echo "  refactor - Code refactoring"
+  echo "  test     - Testing"
+  echo "  chore    - Build process or tooling"
+  echo "  build    - Build system"
+  echo "  ci       - CI configuration"
+  echo "  perf     - Performance improvement"
+  echo ""
+  echo "Examples:"
+  echo "  feat(sync): add WebSocket real-time sync"
+  echo "  fix(api): handle connection timeout"
+  echo "  docs: update installation guide"
+  echo "  chore: update dependencies"
+  echo ""
+  echo "Your message:"
+  echo "  $COMMIT_MSG"
+  exit 1
+fi
+
+echo "✅ Commit message validation passed"

@@ -1,5 +1,5 @@
 import { App, ItemView, WorkspaceLeaf, Notice } from 'obsidian';
-import { SyncEngine, SyncStatus, SyncState, SyncError } from '../sync-engine';
+import { SyncEngine, SyncStatus, SyncState, SyncError } from '../../sync-engine';
 
 export const SYNC_STATUS_VIEW_TYPE = 'openclaw-sync-status-view';
 
@@ -10,8 +10,8 @@ export class SyncStatusView extends ItemView {
 	private refreshIntervalId: number = 0;
 	private errorDetailsVisible: Map<number, boolean> = new Map();
 
-	constructor(app: App, syncEngine: SyncEngine) {
-		super(app);
+	constructor(leaf: WorkspaceLeaf, syncEngine: SyncEngine) {
+		super(leaf);
 		this.syncEngine = syncEngine;
 		this.status = syncEngine.getStatus();
 
@@ -80,9 +80,9 @@ export class SyncStatusView extends ItemView {
 		const autoRefreshContainer = controls.createDiv({ cls: 'auto-refresh-container' });
 		const autoRefreshCheckbox = autoRefreshContainer.createEl('input', {
 			type: 'checkbox',
-			id: 'auto-refresh',
 			cls: 'auto-refresh-checkbox'
 		});
+		autoRefreshCheckbox.id = 'auto-refresh';
 		autoRefreshCheckbox.checked = this.isAutoRefresh;
 		autoRefreshCheckbox.addEventListener('change', (e) => {
 			this.isAutoRefresh = (e.target as HTMLInputElement).checked;
@@ -379,8 +379,8 @@ export class SyncStatusView extends ItemView {
 		}
 	}
 
-	open(): void {
-		const leaf = this.app.workspace.getLeaf(true);
+	static open(app: App, syncEngine: SyncEngine): void {
+		const leaf = app.workspace.getLeaf(true);
 		leaf.setViewState({
 			type: SYNC_STATUS_VIEW_TYPE,
 			active: true

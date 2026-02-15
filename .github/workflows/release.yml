@@ -1,0 +1,159 @@
+name: Release to Obsidian Plugin Marketplace
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+
+jobs:
+  release:
+    name: Prepare Obsidian Plugin Release
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Build plugin
+      run: npm run build
+    
+    - name: Validate plugin structure
+      run: |
+        echo "=== Validating plugin structure ==="
+        
+        # 检查必需文件
+        REQUIRED_FILES=("manifest.json" "main.js" "styles.css")
+        for file in "${REQUIRED_FILES[@]}"; do
+          if [ ! -f "$file" ]; then
+            echo "❌ Missing required file: $file"
+            exit 1
+          fi
+          echo "✅ $file exists"
+        done
+        
+        # 检查manifest.json内容
+        echo "=== Checking manifest.json ==="
+        MANIFEST_ID=$(jq -r '.id' manifest.json)
+        MANIFEST_NAME=$(jq -r '.name' manifest.json)
+        MANIFEST_VERSION=$(jq -r '.version' manifest.json)
+        MANIFEST_MIN_APP_VERSION=$(jq -r '.minAppVersion' manifest.json)
+        
+        echo "Plugin ID: $MANIFEST_ID"
+        echo "Plugin Name: $MANIFEST_NAME"
+        echo "Plugin Version: $MANIFEST_VERSION"
+        echo "Min Obsidian Version: $MANIFEST_MIN_APP_VERSION"
+        
+        # 验证版本号格式
+        if [[ ! "$MANIFEST_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "❌ Invalid version format in manifest.json: $MANIFEST_VERSION"
+          exit 1
+        fi
+        
+        # 检查版本是否与tag匹配
+        TAG_VERSION="${GITHUB_REF#refs/tags/}"
+        if [[ "$TAG_VERSION" =~ ^v ]]; then
+          TAG_VERSION="${TAG_VERSION#v}"
+        fi
+        
+        if [ "$MANIFEST_VERSION" != "$TAG_VERSION" ]; then
+          echo "⚠️  Warning: manifest.json version ($MANIFEST_VERSION) doesn't match tag version ($TAG_VERSION)"
+        fi
+        
+        echo "✅ Manifest validation passed"
+    
+    - name: Create plugin package
+      run: |
+        echo "=== Creating plugin package ==="
+        
+        # 创建临时目录
+        PLUGIN_DIR="openclaw-memory-sync"
+        mkdir -p "$PLUGIN_DIR"
+        
+        # 复制必需文件
+        cp manifest.json "$PLUGIN_DIR/"
+        cp main.js "$PLUGIN_DIR/"
+        cp styles.css "$PLUGIN_DIR/"
+        
+        # 可选：复制其他文件
+        [ -f README.md ] && cp README.md "$PLUGIN_DIR/"
+        [ -f LICENSE ] && cp LICENSE "$PLUGIN_DIR/"
+        
+        # 创建zip包
+        zip -r "openclaw-memory-sync.zip" "$PLUGIN_DIR"
+        
+        echo "✅ Plugin package created: openclaw-memory-sync.zip"
+        ls -lh openclaw-memory-sync.zip
+    
+    - name: Generate release notes
+      run: |
+        echo "=== Generating release notes ==="
+        
+        # 从manifest获取版本信息
+        VERSION=$(jq -r '.version' manifest.json)
+        NAME=$(jq -r '.name' manifest.json)
+        
+        # 获取最近的提交信息
+        echo "# $NAME v$VERSION" > RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+        echo "## 🚀 New Features" >> RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+        echo "## 🐛 Bug Fixes" >> RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+        echo "## 🔧 Improvements" >> RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+        echo "## 📦 Installation" >> RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+        echo "### From Obsidian Community Plugins" >> RELEASE_NOTES.md
+        echo "1. Open Obsidian Settings" >> RELEASE_NOTES.md
+        echo "2. Go to Community Plugins" >> RELEASE_NOTES.md
+        echo "3. Search for \"OpenClaw Memory Sync\"" >> RELEASE_NOTES.md
+        echo "4. Install and enable the plugin" >> RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+        echo "### Manual Installation" >> RELEASE_NOTES.md
+        echo "1. Download the latest release from GitHub" >> RELEASE_NOTES.md
+        echo "2. Extract to your vault's `.obsidian/plugins` folder" >> RELEASE_NOTES.md
+        echo "3. Restart Obsidian" >> RELEASE_NOTES.md
+        echo "4. Enable the plugin in Community Plugins" >> RELEASE_NOTES.md
+        echo "" >> RELEASE_NOTES.md
+        echo "## 🔗 Links" >> RELEASE_NOTES.md
+        echo "- [GitHub Repository](https://github.com/YearsAlso/openclaw-memory-sync)" >> RELEASE_NOTES.md
+        echo "- [Report Issues](https://github.com/YearsAlso/openclaw-memory-sync/issues)" >> RELEASE_NOTES.md
+        
+        echo "✅ Release notes generated"
+    
+    - name: Upload release assets
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          openclaw-memory-sync.zip
+          RELEASE_NOTES.md
+        body_path: RELEASE_NOTES.md
+    
+    - name: Update version files
+      run: |
+        echo "=== Updating version files ==="
+        
+        # 更新versions.json（如果需要）
+        if [ -f versions.json ]; then
+          VERSION=$(jq -r '.version' manifest.json)
+          jq --arg version "$VERSION" '. + {[$version]: $version}' versions.json > versions.json.tmp
+          mv versions.json.tmp versions.json
+          echo "✅ versions.json updated"
+        fi
+        
+        echo "Version update complete"
